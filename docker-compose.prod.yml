@@ -1,0 +1,115 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rss-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rss_summarizer}
+      POSTGRES_USER: ${POSTGRES_USER:-rss_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-rss_user} -d ${POSTGRES_DB:-rss_summarizer}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  temporal:
+    image: temporalio/auto-setup:1.22.4
+    container_name: rss-temporal
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-rss_user}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  temporal-ui:
+    image: temporalio/ui:2.21.3
+    container_name: rss-temporal-ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8233:8080"
+    depends_on:
+      - temporal
+    restart: unless-stopped
+
+  migrate:
+    image: ghcr.io/${GITHUB_REPOSITORY}/backend:latest
+    pull_policy: always
+    container_name: rss-migrate
+    command: ["./migrate", "up"]
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-rss_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rss_summarizer}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  api:
+    image: ghcr.io/${GITHUB_REPOSITORY}/backend:latest
+    pull_policy: always
+    container_name: rss-api
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-rss_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rss_summarizer}?sslmode=disable
+      - TEMPORAL_HOST=temporal:7233
+      - PORT=8080
+      - ENV=production
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_API_URL=${LLM_API_URL}
+      - LLM_MODEL=${LLM_MODEL}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - GOOGLE_REDIRECT_URL=${GOOGLE_REDIRECT_URL}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:latest
+    pull_policy: always
+    container_name: rss-frontend
+    environment:
+      - ORIGIN=${ORIGIN:-http://localhost:3000}
+      - PUBLIC_API_URL=${PUBLIC_API_URL}
+      - HOST=0.0.0.0
+      - ADDRESS_FAMILY=IPv4
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    enable_ipv6: true
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+        - subnet: fd00:dead:beef::/48
+          gateway: fd00:dead:beef::1

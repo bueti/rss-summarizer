@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rss-postgres
+    environment:
+      POSTGRES_DB: rss_summarizer
+      POSTGRES_USER: rss_user
+      POSTGRES_PASSWORD: rss_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - backend_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rss_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  temporal:
+    image: temporalio/auto-setup:1.22.4
+    container_name: rss-temporal
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=rss_user
+      - POSTGRES_PWD=rss_pass
+      - POSTGRES_SEEDS=postgres
+      - POSTGRES_DB=rss_summarizer
+    ports:
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  temporal-ui:
+    image: temporalio/ui:2.21.3
+    container_name: rss-temporal-ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8233:8080"
+    depends_on:
+      - temporal
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rss-api
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgres://rss_user:rss_pass@postgres:5432/rss_summarizer?sslmode=disable
+      - TEMPORAL_HOST=temporal:7233
+      - PORT=8080
+      - ENV=development
+      - DEV_MODE=true
+      # LLM config - pass through from host environment if set, otherwise use .env file
+      - LLM_API_KEY
+      - LLM_API_URL
+      - LLM_MODEL
+      - ENCRYPTION_KEY
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    command: ["air", "-c", ".air.toml"]
+
+volumes:
+  backend_postgres_data:
+    external: true # Use existing volume from backend/docker-compose.yml

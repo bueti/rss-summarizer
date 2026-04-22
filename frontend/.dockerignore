@@ -1,0 +1,42 @@
+# Dependencies
+node_modules
+
+# Git
+.git
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+build
+.svelte-kit
+package
+coverage
+
+# Documentation
+*.md
+README.md
+CLAUDE.md
+
+# IDE
+.DS_Store
+.vscode
+.idea
+
+# Docker files (not needed in build context)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Test files (if any)
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
+
+# Config files that aren't needed at build time
+.prettierrc
+.eslintrc*

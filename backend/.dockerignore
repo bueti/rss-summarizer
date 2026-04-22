@@ -1,0 +1,39 @@
+# Dependencies
+vendor
+
+# Git
+.git
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Documentation
+*.md
+README.md
+CLAUDE.md
+
+# IDE
+.DS_Store
+.vscode
+.idea
+
+# Build artifacts
+tmp
+bin/
+*.log
+
+# Test files
+*_test.go
+coverage.out
+coverage.html
+
+# Docker files (not needed in build context)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Air (hot reload)
+.air.toml
