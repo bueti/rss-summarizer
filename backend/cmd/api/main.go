@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -157,7 +158,7 @@ func main() {
 
 	// Start Temporal worker in background with retry
 	go func() {
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			log.Info().Msgf("Starting Temporal worker (attempt %d/3)", i+1)
 			if err := temporalWorker.Start(); err != nil {
 				log.Error().Err(err).Msgf("Temporal worker failed on attempt %d", i+1)
@@ -240,11 +241,9 @@ func main() {
 				"/openapi.json",
 			}
 
-			for _, path := range publicPaths {
-				if r.URL.Path == path {
-					next.ServeHTTP(w, r)
-					return
-				}
+			if slices.Contains(publicPaths, r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			// Apply appropriate auth middleware for other routes

@@ -164,10 +164,10 @@ func (a *EmailActivities) FetchEmailsActivity(ctx context.Context, input FetchEm
 		// Create article from email
 		art := &article.Article{
 			ID:               uuid.New(),
-			FeedID:           nil,            // No feed for email-sourced articles
-			EmailSourceID:    &source.ID,     // Link to email source for filtering
+			FeedID:           nil,        // No feed for email-sourced articles
+			EmailSourceID:    &source.ID, // Link to email source for filtering
 			Title:            msg.Subject,
-			URL:              "",              // Emails don't have URLs
+			URL:              "", // Emails don't have URLs
 			PublishedAt:      &msg.Date,
 			OriginalContent:  content,
 			SourceType:       "email",
@@ -226,9 +226,9 @@ func (a *EmailActivities) buildGmailQuery(filters []*newsletter_filter.Newslette
 	for _, filter := range filters {
 		if filter.SenderPattern != "" {
 			// Convert pattern to Gmail query format
-			if strings.HasPrefix(filter.SenderPattern, "*@") {
+			if after, ok := strings.CutPrefix(filter.SenderPattern, "*@"); ok {
 				// Domain wildcard: *@substack.com -> from:@substack.com
-				domain := strings.TrimPrefix(filter.SenderPattern, "*@")
+				domain := after
 				parts = append(parts, fmt.Sprintf("from:@%s", domain))
 			} else {
 				// Exact or other patterns

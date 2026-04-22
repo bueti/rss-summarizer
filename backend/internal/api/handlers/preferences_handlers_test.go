@@ -33,13 +33,13 @@ func TestGetPreferences(t *testing.T) {
 func TestUpdatePreferences(t *testing.T) {
 	tests := []struct {
 		name       string
-		body       map[string]interface{}
+		body       map[string]any
 		wantStatus int
 		wantErr    bool
 	}{
 		{
 			name: "valid update",
-			body: map[string]interface{}{
+			body: map[string]any{
 				"default_poll_interval": 120,
 				"max_articles_per_feed": 50,
 			},
@@ -48,7 +48,7 @@ func TestUpdatePreferences(t *testing.T) {
 		},
 		{
 			name: "minimum values",
-			body: map[string]interface{}{
+			body: map[string]any{
 				"default_poll_interval": 15,
 				"max_articles_per_feed": 1,
 			},
@@ -57,7 +57,7 @@ func TestUpdatePreferences(t *testing.T) {
 		},
 		{
 			name: "poll interval too low",
-			body: map[string]interface{}{
+			body: map[string]any{
 				"default_poll_interval": 5,
 				"max_articles_per_feed": 20,
 			},
@@ -66,7 +66,7 @@ func TestUpdatePreferences(t *testing.T) {
 		},
 		{
 			name: "poll interval too high",
-			body: map[string]interface{}{
+			body: map[string]any{
 				"default_poll_interval": 2000,
 				"max_articles_per_feed": 20,
 			},
@@ -75,7 +75,7 @@ func TestUpdatePreferences(t *testing.T) {
 		},
 		{
 			name: "max articles too low",
-			body: map[string]interface{}{
+			body: map[string]any{
 				"default_poll_interval": 60,
 				"max_articles_per_feed": 0,
 			},
@@ -84,7 +84,7 @@ func TestUpdatePreferences(t *testing.T) {
 		},
 		{
 			name: "max articles too high",
-			body: map[string]interface{}{
+			body: map[string]any{
 				"default_poll_interval": 60,
 				"max_articles_per_feed": 200,
 			},

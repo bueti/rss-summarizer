@@ -14,7 +14,7 @@ func TestCreateNewsletterFilter(t *testing.T) {
 	tests := []struct {
 		name       string
 		setup      func(*apitest.TestServer) string
-		body       map[string]interface{}
+		body       map[string]any
 		wantStatus int
 		wantErr    bool
 	}{
@@ -23,8 +23,8 @@ func TestCreateNewsletterFilter(t *testing.T) {
 			setup: func(ts *apitest.TestServer) string {
 				return createTestEmailSource(t, ts)
 			},
-			body: func() map[string]interface{} {
-				return map[string]interface{}{
+			body: func() map[string]any {
+				return map[string]any{
 					"name":           "Substack Newsletters",
 					"sender_pattern": "*@substack.com",
 				}
@@ -37,8 +37,8 @@ func TestCreateNewsletterFilter(t *testing.T) {
 			setup: func(ts *apitest.TestServer) string {
 				return createTestEmailSource(t, ts)
 			},
-			body: func() map[string]interface{} {
-				return map[string]interface{}{
+			body: func() map[string]any {
+				return map[string]any{
 					"name":            "Weekly Digests",
 					"sender_pattern":  "*@example.com",
 					"subject_pattern": "^Weekly Digest",
@@ -52,8 +52,8 @@ func TestCreateNewsletterFilter(t *testing.T) {
 			setup: func(ts *apitest.TestServer) string {
 				return createTestEmailSource(t, ts)
 			},
-			body: func() map[string]interface{} {
-				return map[string]interface{}{
+			body: func() map[string]any {
+				return map[string]any{
 					"sender_pattern": "*@substack.com",
 				}
 			}(),
@@ -65,8 +65,8 @@ func TestCreateNewsletterFilter(t *testing.T) {
 			setup: func(ts *apitest.TestServer) string {
 				return createTestEmailSource(t, ts)
 			},
-			body: func() map[string]interface{} {
-				return map[string]interface{}{
+			body: func() map[string]any {
+				return map[string]any{
 					"name": "Test Filter",
 				}
 			}(),
@@ -78,8 +78,8 @@ func TestCreateNewsletterFilter(t *testing.T) {
 			setup: func(ts *apitest.TestServer) string {
 				return uuid.New().String() // Non-existent
 			},
-			body: func() map[string]interface{} {
-				return map[string]interface{}{
+			body: func() map[string]any {
+				return map[string]any{
 					"name":           "Test Filter",
 					"sender_pattern": "*@substack.com",
 				}
@@ -103,12 +103,12 @@ func TestCreateNewsletterFilter(t *testing.T) {
 
 			if !tt.wantErr {
 				var resp struct {
-					ID              string `json:"id"`
-					EmailSourceID   string `json:"email_source_id"`
-					Name            string `json:"name"`
-					SenderPattern   string `json:"sender_pattern"`
-					SubjectPattern  string `json:"subject_pattern"`
-					IsActive        bool   `json:"is_active"`
+					ID             string `json:"id"`
+					EmailSourceID  string `json:"email_source_id"`
+					Name           string `json:"name"`
+					SenderPattern  string `json:"sender_pattern"`
+					SubjectPattern string `json:"subject_pattern"`
+					IsActive       bool   `json:"is_active"`
 				}
 				apitest.DecodeResponse(t, w, &resp)
 
@@ -147,7 +147,7 @@ func TestListNewsletterFilters(t *testing.T) {
 				sourceID := createTestEmailSource(t, ts)
 
 				// Create two filters
-				body1 := map[string]interface{}{
+				body1 := map[string]any{
 					"email_source_id": sourceID,
 					"name":            "Substack",
 					"sender_pattern":  "*@substack.com",
@@ -155,7 +155,7 @@ func TestListNewsletterFilters(t *testing.T) {
 				w := ts.Request(t, "POST", "/v1/newsletter-filters", body1)
 				apitest.AssertStatus(t, w, http.StatusOK)
 
-				body2 := map[string]interface{}{
+				body2 := map[string]any{
 					"email_source_id": sourceID,
 					"name":            "Medium",
 					"sender_pattern":  "*@medium.com",
@@ -209,7 +209,7 @@ func TestGetNewsletterFilter(t *testing.T) {
 			name: "existing filter",
 			setup: func(ts *apitest.TestServer) string {
 				sourceID := createTestEmailSource(t, ts)
-				body := map[string]interface{}{
+				body := map[string]any{
 					"email_source_id": sourceID,
 					"name":            "Test Filter",
 					"sender_pattern":  "*@test.com",
@@ -272,20 +272,20 @@ func TestUpdateNewsletterFilter(t *testing.T) {
 	tests := []struct {
 		name       string
 		setup      func(*apitest.TestServer) string
-		body       map[string]interface{}
+		body       map[string]any
 		wantStatus int
-		validate   func(*testing.T, map[string]interface{})
+		validate   func(*testing.T, map[string]any)
 	}{
 		{
 			name: "update name",
 			setup: func(ts *apitest.TestServer) string {
 				return createTestFilter(t, ts, "Original Name", "*@test.com")
 			},
-			body: map[string]interface{}{
+			body: map[string]any{
 				"name": "Updated Name",
 			},
 			wantStatus: http.StatusOK,
-			validate: func(t *testing.T, resp map[string]interface{}) {
+			validate: func(t *testing.T, resp map[string]any) {
 				if resp["name"] != "Updated Name" {
 					t.Errorf("Expected name 'Updated Name', got %v", resp["name"])
 				}
@@ -296,11 +296,11 @@ func TestUpdateNewsletterFilter(t *testing.T) {
 			setup: func(ts *apitest.TestServer) string {
 				return createTestFilter(t, ts, "Test", "*@old.com")
 			},
-			body: map[string]interface{}{
+			body: map[string]any{
 				"sender_pattern": "*@new.com",
 			},
 			wantStatus: http.StatusOK,
-			validate: func(t *testing.T, resp map[string]interface{}) {
+			validate: func(t *testing.T, resp map[string]any) {
 				if resp["sender_pattern"] != "*@new.com" {
 					t.Errorf("Expected sender_pattern '*@new.com', got %v", resp["sender_pattern"])
 				}
@@ -311,11 +311,11 @@ func TestUpdateNewsletterFilter(t *testing.T) {
 			setup: func(ts *apitest.TestServer) string {
 				return createTestFilter(t, ts, "Test", "*@test.com")
 			},
-			body: map[string]interface{}{
+			body: map[string]any{
 				"is_active": false,
 			},
 			wantStatus: http.StatusOK,
-			validate: func(t *testing.T, resp map[string]interface{}) {
+			validate: func(t *testing.T, resp map[string]any) {
 				if resp["is_active"] != false {
 					t.Error("Expected filter to be inactive")
 				}
@@ -326,11 +326,11 @@ func TestUpdateNewsletterFilter(t *testing.T) {
 			setup: func(ts *apitest.TestServer) string {
 				return createTestFilter(t, ts, "Test", "*@test.com")
 			},
-			body: map[string]interface{}{
+			body: map[string]any{
 				"subject_pattern": "^Weekly",
 			},
 			wantStatus: http.StatusOK,
-			validate: func(t *testing.T, resp map[string]interface{}) {
+			validate: func(t *testing.T, resp map[string]any) {
 				if resp["subject_pattern"] != "^Weekly" {
 					t.Errorf("Expected subject_pattern '^Weekly', got %v", resp["subject_pattern"])
 				}
@@ -350,7 +350,7 @@ func TestUpdateNewsletterFilter(t *testing.T) {
 			apitest.AssertStatus(t, w, tt.wantStatus)
 
 			if tt.wantStatus == http.StatusOK {
-				var resp map[string]interface{}
+				var resp map[string]any
 				apitest.DecodeResponse(t, w, &resp)
 
 				if tt.validate != nil {
@@ -425,7 +425,7 @@ func createTestEmailSource(t *testing.T, ts *apitest.TestServer) string {
 func createTestFilter(t *testing.T, ts *apitest.TestServer, name, senderPattern string) string {
 	sourceID := createTestEmailSource(t, ts)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"email_source_id": sourceID,
 		"name":            name,
 		"sender_pattern":  senderPattern,

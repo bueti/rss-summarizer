@@ -16,10 +16,10 @@ func TestListArticles(t *testing.T) {
 	apitest.AssertStatus(t, w, http.StatusOK)
 
 	var resp struct {
-		Articles   []map[string]interface{} `json:"articles"`
-		TotalCount int                      `json:"total_count"`
-		Limit      int                      `json:"limit"`
-		Offset     int                      `json:"offset"`
+		Articles   []map[string]any `json:"articles"`
+		TotalCount int              `json:"total_count"`
+		Limit      int              `json:"limit"`
+		Offset     int              `json:"offset"`
 	}
 	apitest.DecodeResponse(t, w, &resp)
 
@@ -62,7 +62,7 @@ func TestMarkArticleAsRead(t *testing.T) {
 
 	testArticleID := "00000000-0000-0000-0000-000000000000"
 
-	w := ts.Request(t, "PATCH", "/v1/articles/"+testArticleID, map[string]interface{}{
+	w := ts.Request(t, "PATCH", "/v1/articles/"+testArticleID, map[string]any{
 		"is_read": true,
 	})
 
@@ -83,7 +83,7 @@ func TestGetArticleStats(t *testing.T) {
 	// If endpoint exists, should return 200
 	// If not implemented yet, will return 404
 	if w.Code == http.StatusOK {
-		var stats map[string]interface{}
+		var stats map[string]any
 		apitest.DecodeResponse(t, w, &stats)
 		t.Logf("Article stats: %+v", stats)
 	}

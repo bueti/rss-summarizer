@@ -109,7 +109,7 @@ func (r *NewsletterFilterRepository) FindActiveByEmailSourceID(ctx context.Conte
 func (r *NewsletterFilterRepository) Update(ctx context.Context, id uuid.UUID, input *newsletter_filter.UpdateNewsletterFilterInput) (*newsletter_filter.NewsletterFilter, error) {
 	// Start building update query dynamically
 	query := `UPDATE newsletter_filters SET updated_at = NOW()`
-	args := []interface{}{}
+	args := []any{}
 	argPos := 1
 
 	if input.Name != nil {

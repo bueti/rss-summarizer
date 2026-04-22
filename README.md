@@ -16,7 +16,7 @@ AI-powered RSS feed aggregator that summarizes articles using Claude, rates them
 ### Prerequisites
 
 - Docker & Docker Compose
-- Go 1.21+ and Node.js 18+ (for local development)
+- Go 1.26+ and Node.js 20+ (for local development)
 - Anthropic API key ([get one here](https://console.anthropic.com/))
 
 ### Setup

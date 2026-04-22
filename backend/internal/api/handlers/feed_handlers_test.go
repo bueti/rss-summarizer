@@ -10,14 +10,14 @@ import (
 func TestCreateFeed(t *testing.T) {
 	tests := []struct {
 		name       string
-		body       map[string]interface{}
+		body       map[string]any
 		wantStatus int
 		wantErr    bool
 	}{
 		{
 			name: "valid feed",
-			body: map[string]interface{}{
-				"url":                     "https://blog.golang.org/feed.atom",
+			body: map[string]any{
+				"url":                    "https://blog.golang.org/feed.atom",
 				"poll_frequency_minutes": 60,
 			},
 			wantStatus: http.StatusOK,
@@ -25,8 +25,8 @@ func TestCreateFeed(t *testing.T) {
 		},
 		{
 			name: "invalid url",
-			body: map[string]interface{}{
-				"url":                     "not-a-valid-url",
+			body: map[string]any{
+				"url":                    "not-a-valid-url",
 				"poll_frequency_minutes": 60,
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -34,8 +34,8 @@ func TestCreateFeed(t *testing.T) {
 		},
 		{
 			name: "poll frequency too low",
-			body: map[string]interface{}{
-				"url":                     "https://blog.golang.org/feed.atom",
+			body: map[string]any{
+				"url":                    "https://blog.golang.org/feed.atom",
 				"poll_frequency_minutes": 5,
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -43,8 +43,8 @@ func TestCreateFeed(t *testing.T) {
 		},
 		{
 			name: "poll frequency too high",
-			body: map[string]interface{}{
-				"url":                     "https://blog.golang.org/feed.atom",
+			body: map[string]any{
+				"url":                    "https://blog.golang.org/feed.atom",
 				"poll_frequency_minutes": 2000,
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -52,7 +52,7 @@ func TestCreateFeed(t *testing.T) {
 		},
 		{
 			name: "missing url",
-			body: map[string]interface{}{
+			body: map[string]any{
 				"poll_frequency_minutes": 60,
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -97,10 +97,10 @@ func TestListFeeds(t *testing.T) {
 	apitest.AssertStatus(t, w, http.StatusOK)
 
 	var resp struct {
-		Feeds      []map[string]interface{} `json:"feeds"`
-		TotalCount int                      `json:"total_count"`
-		Limit      int                      `json:"limit"`
-		Offset     int                      `json:"offset"`
+		Feeds      []map[string]any `json:"feeds"`
+		TotalCount int              `json:"total_count"`
+		Limit      int              `json:"limit"`
+		Offset     int              `json:"offset"`
 	}
 	apitest.DecodeResponse(t, w, &resp)
 
@@ -109,8 +109,8 @@ func TestListFeeds(t *testing.T) {
 	}
 
 	// Create a feed
-	ts.Request(t, "POST", "/v1/feeds", map[string]interface{}{
-		"url":            "https://blog.golang.org/feed.atom",
+	ts.Request(t, "POST", "/v1/feeds", map[string]any{
+		"url":                    "https://blog.golang.org/feed.atom",
 		"poll_frequency_minutes": 60,
 	})
 
@@ -129,8 +129,8 @@ func TestGetFeed(t *testing.T) {
 	defer ts.Close(t)
 
 	// Create a feed
-	w := ts.Request(t, "POST", "/v1/feeds", map[string]interface{}{
-		"url":            "https://blog.golang.org/feed.atom",
+	w := ts.Request(t, "POST", "/v1/feeds", map[string]any{
+		"url":                    "https://blog.golang.org/feed.atom",
 		"poll_frequency_minutes": 60,
 	})
 
@@ -170,8 +170,8 @@ func TestUpdateFeed(t *testing.T) {
 	defer ts.Close(t)
 
 	// Create a feed
-	w := ts.Request(t, "POST", "/v1/feeds", map[string]interface{}{
-		"url":            "https://blog.golang.org/feed.atom",
+	w := ts.Request(t, "POST", "/v1/feeds", map[string]any{
+		"url":                    "https://blog.golang.org/feed.atom",
 		"poll_frequency_minutes": 60,
 	})
 
@@ -181,7 +181,7 @@ func TestUpdateFeed(t *testing.T) {
 	apitest.DecodeResponse(t, w, &created)
 
 	// Update the feed
-	w = ts.Request(t, "PUT", "/v1/feeds/"+created.ID, map[string]interface{}{
+	w = ts.Request(t, "PUT", "/v1/feeds/"+created.ID, map[string]any{
 		"poll_frequency_minutes": 120,
 	})
 	apitest.AssertStatus(t, w, http.StatusOK)
@@ -201,8 +201,8 @@ func TestDeleteFeed(t *testing.T) {
 	defer ts.Close(t)
 
 	// Create a feed
-	w := ts.Request(t, "POST", "/v1/feeds", map[string]interface{}{
-		"url":            "https://blog.golang.org/feed.atom",
+	w := ts.Request(t, "POST", "/v1/feeds", map[string]any{
+		"url":                    "https://blog.golang.org/feed.atom",
 		"poll_frequency_minutes": 60,
 	})
 
@@ -227,15 +227,15 @@ func TestDuplicateFeedURL(t *testing.T) {
 	feedURL := "https://blog.golang.org/feed.atom"
 
 	// Create first feed
-	w := ts.Request(t, "POST", "/v1/feeds", map[string]interface{}{
-		"url":            feedURL,
+	w := ts.Request(t, "POST", "/v1/feeds", map[string]any{
+		"url":                    feedURL,
 		"poll_frequency_minutes": 60,
 	})
 	apitest.AssertStatus(t, w, http.StatusOK)
 
 	// Try to create duplicate
-	w = ts.Request(t, "POST", "/v1/feeds", map[string]interface{}{
-		"url":            feedURL,
+	w = ts.Request(t, "POST", "/v1/feeds", map[string]any{
+		"url":                    feedURL,
 		"poll_frequency_minutes": 60,
 	})
 	// Should fail with conflict or validation error

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"slices"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -86,15 +87,15 @@ func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*oauth
 
 // EmailMessage represents a simplified email message
 type EmailMessage struct {
-	ID          string
-	ThreadID    string
-	From        string
-	Subject     string
-	Date        time.Time
-	Snippet     string
-	BodyHTML    string
-	BodyPlain   string
-	IsUnread    bool
+	ID        string
+	ThreadID  string
+	From      string
+	Subject   string
+	Date      time.Time
+	Snippet   string
+	BodyHTML  string
+	BodyPlain string
+	IsUnread  bool
 }
 
 // FetchEmails fetches emails matching the given query (legacy - use FetchEmailsWithToken instead)
@@ -196,11 +197,8 @@ func (s *Service) fetchMessageDetails(ctx context.Context, gmailService *gmail.S
 	}
 
 	// Check if unread
-	for _, label := range msg.LabelIds {
-		if label == "UNREAD" {
-			email.IsUnread = true
-			break
-		}
+	if slices.Contains(msg.LabelIds, "UNREAD") {
+		email.IsUnread = true
 	}
 
 	// Extract body content

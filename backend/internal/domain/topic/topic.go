@@ -1,6 +1,7 @@
 package topic
 
 import (
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,10 +41,5 @@ var ValidPreferences = []string{"high", "normal", "hide"}
 
 // IsValidPreference checks if a preference value is valid
 func IsValidPreference(pref string) bool {
-	for _, valid := range ValidPreferences {
-		if pref == valid {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ValidPreferences, pref)
 }
