@@ -176,7 +176,7 @@ func (r *articleRepository) FindByFeedID(ctx context.Context, feedID uuid.UUID, 
 
 	// Build query with filters
 	query := `SELECT * FROM articles WHERE feed_id = $1`
-	args := []interface{}{feedID}
+	args := []any{feedID}
 	argPos := 2
 
 	if filters.MinImportance != nil {
@@ -239,7 +239,7 @@ func (r *articleRepository) FindByUserIDWithState(ctx context.Context, userID uu
 			OR (a.source_type = 'email' AND es.id IS NOT NULL AND es.is_active = true)
 		)
 	`
-	args := []interface{}{userID}
+	args := []any{userID}
 	argPos := 2
 
 	if filters.FeedID != nil {
@@ -347,7 +347,6 @@ func (r *articleRepository) Update(ctx context.Context, a *article.Article) erro
 	return nil
 }
 
-
 func (r *articleRepository) ExistsByFeedAndURL(ctx context.Context, feedID uuid.UUID, url string) (bool, error) {
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM articles WHERE feed_id = $1 AND url = $2)`
@@ -408,7 +407,7 @@ func (r *articleRepository) CountByUserIDWithState(ctx context.Context, userID u
 			OR (a.source_type = 'email' AND es.id IS NOT NULL AND es.is_active = true)
 		)
 	`
-	args := []interface{}{userID}
+	args := []any{userID}
 	argPos := 2
 
 	if filters.FeedID != nil {

@@ -84,7 +84,7 @@ func (r *llmConfigRepository) Update(ctx context.Context, input *llmconfig.Updat
 		UPDATE llm_config
 		SET provider = $1, model = $2, api_url = $3, updated_at = NOW()
 	`
-	args := []interface{}{config.Provider, config.Model, config.APIURL}
+	args := []any{config.Provider, config.Model, config.APIURL}
 
 	if encryptedAPIKey != nil {
 		query += `, api_key = $4`

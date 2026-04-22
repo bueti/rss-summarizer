@@ -263,7 +263,7 @@ func TestDeleteEmailSourceCascadesFilters(t *testing.T) {
 	}
 
 	// Create newsletter filter
-	body := map[string]interface{}{
+	body := map[string]any{
 		"email_source_id": created.ID.String(),
 		"name":            "Test Filter",
 		"sender_pattern":  "*@substack.com",

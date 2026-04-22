@@ -120,8 +120,8 @@ func MatchesSenderPattern(email, pattern string) bool {
 	}
 
 	// Domain wildcard: *@substack.com
-	if strings.HasPrefix(pattern, "*@") {
-		domain := strings.TrimPrefix(pattern, "*@")
+	if after, ok := strings.CutPrefix(pattern, "*@"); ok {
+		domain := after
 		return strings.HasSuffix(email, "@"+domain)
 	}
 
@@ -132,14 +132,14 @@ func MatchesSenderPattern(email, pattern string) bool {
 	}
 
 	// Prefix match: newsletter*
-	if strings.HasSuffix(pattern, "*") {
-		prefix := strings.TrimSuffix(pattern, "*")
+	if before, ok := strings.CutSuffix(pattern, "*"); ok {
+		prefix := before
 		return strings.HasPrefix(email, prefix)
 	}
 
 	// Suffix match: *newsletter
-	if strings.HasPrefix(pattern, "*") {
-		suffix := strings.TrimPrefix(pattern, "*")
+	if after, ok := strings.CutPrefix(pattern, "*"); ok {
+		suffix := after
 		return strings.HasSuffix(email, suffix)
 	}
 

@@ -9,7 +9,7 @@ The GitHub Actions workflow automatically builds and pushes Docker images to Git
 ## Build Process
 
 ### Backend (`backend/Dockerfile`)
-- Multi-stage build using Go 1.25
+- Multi-stage build using Go 1.26
 - Compiles the API binary
 - Final image: Alpine-based (~30MB)
 - Includes database migrations

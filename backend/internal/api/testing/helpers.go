@@ -35,15 +35,15 @@ import (
 
 // TestServer wraps the HTTP server and dependencies for testing
 type TestServer struct {
-	Router              *chi.Mux
-	API                 huma.API
-	DB                  *database.DB
-	UserID              uuid.UUID
-	Ctx                 context.Context
-	FeedRepo            repository.FeedRepository
-	EmailSourceRepo     email_source.Repository
+	Router               *chi.Mux
+	API                  huma.API
+	DB                   *database.DB
+	UserID               uuid.UUID
+	Ctx                  context.Context
+	FeedRepo             repository.FeedRepository
+	EmailSourceRepo      email_source.Repository
 	NewsletterFilterRepo newsletter_filter.Repository
-	Config              *config.Config
+	Config               *config.Config
 }
 
 // NewTestServer creates a new test server with all dependencies
@@ -164,15 +164,15 @@ func NewTestServer(t *testing.T) *TestServer {
 	ctx := context.Background()
 
 	return &TestServer{
-		Router:              router,
-		API:                 api,
-		DB:                  db,
-		UserID:              userID,
-		Ctx:                 ctx,
-		FeedRepo:            feedRepo,
-		EmailSourceRepo:     emailSourceRepo,
+		Router:               router,
+		API:                  api,
+		DB:                   db,
+		UserID:               userID,
+		Ctx:                  ctx,
+		FeedRepo:             feedRepo,
+		EmailSourceRepo:      emailSourceRepo,
 		NewsletterFilterRepo: newsletterFilterRepo,
-		Config:              cfg,
+		Config:               cfg,
 	}
 }
 
@@ -184,7 +184,7 @@ func (ts *TestServer) Close(t *testing.T) {
 }
 
 // Request makes an HTTP request to the test server
-func (ts *TestServer) Request(t *testing.T, method, path string, body interface{}) *httptest.ResponseRecorder {
+func (ts *TestServer) Request(t *testing.T, method, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 
 	var bodyReader io.Reader
@@ -206,7 +206,7 @@ func (ts *TestServer) Request(t *testing.T, method, path string, body interface{
 }
 
 // DecodeResponse decodes the JSON response into the target
-func DecodeResponse(t *testing.T, w *httptest.ResponseRecorder, target interface{}) {
+func DecodeResponse(t *testing.T, w *httptest.ResponseRecorder, target any) {
 	t.Helper()
 
 	if err := json.NewDecoder(w.Body).Decode(target); err != nil {

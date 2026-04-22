@@ -151,7 +151,7 @@ func (r *EmailSourceRepository) FindAllActive(ctx context.Context) ([]*email_sou
 func (r *EmailSourceRepository) Update(ctx context.Context, id uuid.UUID, input *email_source.UpdateEmailSourceInput) (*email_source.EmailSource, error) {
 	// Start building update query dynamically
 	query := `UPDATE email_sources SET updated_at = NOW()`
-	args := []interface{}{}
+	args := []any{}
 	argPos := 1
 
 	if input.AccessToken != nil {
