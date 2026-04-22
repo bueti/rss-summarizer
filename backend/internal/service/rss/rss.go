@@ -31,12 +31,17 @@ type service struct {
 }
 
 func NewService() Service {
+	p := gofeed.NewParser()
+	p.Client = newSafeHTTPClient(30 * time.Second)
 	return &service{
-		parser: gofeed.NewParser(),
+		parser: p,
 	}
 }
 
 func (s *service) FetchFeed(ctx context.Context, url string) (*FeedMetadata, error) {
+	if err := validateFeedURL(url); err != nil {
+		return nil, err
+	}
 	feed, err := s.parser.ParseURLWithContext(url, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse feed: %w", err)
@@ -75,6 +80,9 @@ func (s *service) FetchFeed(ctx context.Context, url string) (*FeedMetadata, err
 }
 
 func (s *service) ValidateFeedURL(ctx context.Context, url string) error {
+	if err := validateFeedURL(url); err != nil {
+		return err
+	}
 	_, err := s.parser.ParseURLWithContext(url, ctx)
 	if err != nil {
 		return fmt.Errorf("invalid feed URL: %w", err)

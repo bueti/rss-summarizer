@@ -50,51 +50,39 @@ func WithUserID(ctx context.Context, userID uuid.UUID) context.Context {
 	return context.WithValue(ctx, userIDKey, userID)
 }
 
-// SessionAuthMiddleware validates session cookies for production
-func SessionAuthMiddleware(cfg *config.Config, sessionRepo repository.SessionRepository, userRepo repository.UserRepository) func(http.Handler) http.Handler {
+// SessionAuthMiddleware validates session cookies for production.
+// Users are deleted via ON DELETE CASCADE from sessions, so a live session row
+// implies the user exists — no second lookup required.
+func SessionAuthMiddleware(cfg *config.Config, sessionRepo repository.SessionRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip session auth if in dev mode
 			if cfg.DevMode.Enabled {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Get session cookie
 			cookie, err := r.Cookie(sessionCookieName)
 			if err != nil {
 				http.Error(w, "Authentication required", http.StatusUnauthorized)
 				return
 			}
 
-			// Validate session
 			session, err := sessionRepo.FindByToken(r.Context(), cookie.Value)
 			if err != nil {
-				// Clear invalid cookie
 				ClearSessionCookie(w)
 				http.Error(w, "Invalid or expired session", http.StatusUnauthorized)
 				return
 			}
 
-			// Verify user still exists
-			_, err = userRepo.FindByID(r.Context(), session.UserID)
-			if err != nil {
-				sessionRepo.DeleteByToken(r.Context(), cookie.Value)
-				ClearSessionCookie(w)
-				http.Error(w, "User not found", http.StatusUnauthorized)
-				return
-			}
-
-			// Inject user ID into context
 			ctx := context.WithValue(r.Context(), userIDKey, session.UserID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// SetSessionCookie sets a session cookie
-func SetSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time, secure bool) {
-	http.SetCookie(w, &http.Cookie{
+// SessionCookie returns a Set-Cookie value for a newly issued session token.
+func SessionCookie(token string, expiresAt time.Time, secure bool) http.Cookie {
+	return http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
@@ -102,18 +90,35 @@ func SetSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time, 
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
-	})
+	}
 }
 
-// ClearSessionCookie clears the session cookie
-func ClearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+// ClearSessionCookieValue returns a Set-Cookie value that instructs the browser
+// to discard any existing session cookie. Attributes mirror SessionCookie so
+// browsers reliably clear it.
+func ClearSessionCookieValue(secure bool) http.Cookie {
+	return http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-	})
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+// SetSessionCookie writes the session cookie directly to the response.
+// Used by middleware on auth-failure paths that need to clear an invalid cookie.
+func SetSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time, secure bool) {
+	c := SessionCookie(token, expiresAt, secure)
+	http.SetCookie(w, &c)
+}
+
+// ClearSessionCookie writes a session-cookie-clearing header to the response.
+func ClearSessionCookie(w http.ResponseWriter) {
+	c := ClearSessionCookieValue(false)
+	http.SetCookie(w, &c)
 }
 
 // AdminMiddleware ensures the user has admin role

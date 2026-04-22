@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"time"
@@ -42,24 +43,29 @@ func NewAuthHandlers(
 	}
 }
 
+const oauthStateCookieName = "rss_oauth_state"
+
 type GoogleLoginResponse struct {
-	Body struct {
+	SetCookie []http.Cookie `header:"Set-Cookie"`
+	Body      struct {
 		AuthURL string `json:"auth_url" doc:"Google OAuth authorization URL"`
 	}
 }
 
 type GoogleCallbackRequest struct {
-	Code  string `query:"code" required:"true" doc:"OAuth authorization code"`
-	State string `query:"state" required:"true" doc:"OAuth state token"`
+	Code        string `query:"code" required:"true" doc:"OAuth authorization code"`
+	State       string `query:"state" required:"true" doc:"OAuth state token"`
+	StateCookie string `cookie:"rss_oauth_state" required:"false" doc:"CSRF state token stored at login"`
 }
 
 type GoogleCallbackResponse struct {
-	Body struct {
-		RedirectURL string `json:"redirect_url" doc:"URL to redirect user to after authentication"`
-	}
+	Location  string        `header:"Location"`
+	SetCookie []http.Cookie `header:"Set-Cookie"`
 }
 
-type LogoutResponse struct{}
+type LogoutResponse struct {
+	SetCookie http.Cookie `header:"Set-Cookie"`
+}
 
 type MeResponse struct {
 	Body struct {
@@ -83,12 +89,13 @@ func (h *AuthHandlers) Register(api huma.API) {
 	}, h.GoogleLogin)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "google-callback",
-		Method:      http.MethodGet,
-		Path:        "/auth/google/callback",
-		Summary:     "Handle Google OAuth callback",
-		Description: "Processes the OAuth callback, creates a session, and returns redirect URL",
-		Tags:        []string{"Auth"},
+		OperationID:   "google-callback",
+		Method:        http.MethodGet,
+		Path:          "/auth/google/callback",
+		Summary:       "Handle Google OAuth callback",
+		Description:   "Processes the OAuth callback, creates a session, and redirects to the frontend",
+		Tags:          []string{"Auth"},
+		DefaultStatus: http.StatusFound,
 	}, h.GoogleCallback)
 
 	huma.Register(api, huma.Operation{
@@ -110,64 +117,78 @@ func (h *AuthHandlers) Register(api huma.API) {
 	}, h.Me)
 }
 
+// oauthStateCookieTTL bounds how long a generated state token is valid. The
+// OAuth round trip normally completes in seconds; 10 minutes tolerates slow
+// networks and IdP interstitials without leaving stale tokens on disk.
+const oauthStateCookieTTL = 10 * time.Minute
+
+func (h *AuthHandlers) stateCookie(value string, clear bool) http.Cookie {
+	c := http.Cookie{
+		Name:     oauthStateCookieName,
+		Value:    value,
+		Path:     "/auth/google",
+		HttpOnly: true,
+		Secure:   h.cfg.Server.Env != "development",
+		SameSite: http.SameSiteLaxMode,
+	}
+	if clear {
+		c.MaxAge = -1
+	} else {
+		c.MaxAge = int(oauthStateCookieTTL.Seconds())
+	}
+	return c
+}
+
 func (h *AuthHandlers) GoogleLogin(ctx context.Context, input *struct{}) (*GoogleLoginResponse, error) {
-	// Generate CSRF state token
 	state, err := h.oauthService.GenerateStateToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate state token: %w", err)
 	}
 
-	// Get OAuth authorization URL
-	authURL := h.oauthService.GetAuthURL(state)
-
-	return &GoogleLoginResponse{
-		Body: struct {
-			AuthURL string `json:"auth_url" doc:"Google OAuth authorization URL"`
-		}{
-			AuthURL: authURL,
-		},
-	}, nil
+	resp := &GoogleLoginResponse{
+		SetCookie: []http.Cookie{h.stateCookie(state, false)},
+	}
+	resp.Body.AuthURL = h.oauthService.GetAuthURL(state)
+	return resp, nil
 }
 
 func (h *AuthHandlers) GoogleCallback(ctx context.Context, input *GoogleCallbackRequest) (*GoogleCallbackResponse, error) {
 	log.Info().
-		Str("code", input.Code[:10]+"...").
-		Str("state", input.State[:10]+"...").
+		Str("code", truncateForLog(input.Code)).
+		Str("state", truncateForLog(input.State)).
 		Msg("Processing OAuth callback")
 
-	// Exchange authorization code for token
+	// CSRF defense: the state we set as a cookie in GoogleLogin must match the
+	// state Google echoed back in the query string. Without this check an
+	// attacker can force the victim into the attacker's Google session.
+	if input.StateCookie == "" || input.State == "" ||
+		subtle.ConstantTimeCompare([]byte(input.State), []byte(input.StateCookie)) != 1 {
+		log.Warn().Msg("OAuth state mismatch; rejecting callback")
+		return nil, huma.Error400BadRequest("Invalid OAuth state")
+	}
+
 	token, err := h.oauthService.ExchangeCode(ctx, input.Code)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to exchange OAuth code")
 		return nil, huma.Error400BadRequest(fmt.Sprintf("Failed to exchange code: %v", err))
 	}
 
-	log.Info().Msg("Successfully exchanged OAuth code for token")
-
-	// Get user info from Google
 	userInfo, err := h.oauthService.GetUserInfo(ctx, token)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get user info from Google")
 		return nil, huma.Error400BadRequest(fmt.Sprintf("Failed to get user info: %v", err))
 	}
 
-	log.Info().
-		Str("email", userInfo.Email).
-		Bool("email_verified", userInfo.EmailVerified).
-		Msg("Retrieved user info from Google")
-
 	if !userInfo.EmailVerified {
 		log.Warn().Str("email", userInfo.Email).Msg("Email not verified")
 		return nil, huma.Error400BadRequest("Email not verified")
 	}
 
-	// Find or create user
 	u, err := h.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find or create user: %w", err)
 	}
 
-	// Create session
 	expiresAt := time.Now().Add(h.cfg.OAuth.SessionDuration)
 	sess, err := h.sessionRepo.Create(ctx, &session.CreateSessionInput{
 		UserID:    u.ID,
@@ -177,40 +198,22 @@ func (h *AuthHandlers) GoogleCallback(ctx context.Context, input *GoogleCallback
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	// Set session cookie and redirect
-	w, ok := middleware.GetResponseWriter(ctx)
-	if ok {
-		secure := h.cfg.Server.Env != "development"
-		middleware.SetSessionCookie(w, sess.SessionToken, expiresAt, secure)
-
-		log.Info().
-			Str("user_id", u.ID.String()).
-			Str("email", u.Email).
-			Msg("User logged in via Google OAuth")
-
-		// Determine redirect URL based on environment
-		redirectURL := "http://localhost:5173/"
-		if h.cfg.Server.Env == "production" {
-			redirectURL = "/"
-		}
-
-		// Send HTTP redirect
-		w.Header().Set("Location", redirectURL)
-		w.WriteHeader(http.StatusFound) // 302 redirect
-		return nil, nil                 // Signal to Huma that we've handled the response
-	}
-
-	// Fallback if we don't have ResponseWriter (shouldn't happen)
 	log.Info().
 		Str("user_id", u.ID.String()).
 		Str("email", u.Email).
 		Msg("User logged in via Google OAuth")
 
+	secure := h.cfg.Server.Env != "development"
+	redirectURL := h.cfg.Server.FrontendURL
+	if redirectURL == "" {
+		redirectURL = "/"
+	}
+
 	return &GoogleCallbackResponse{
-		Body: struct {
-			RedirectURL string `json:"redirect_url" doc:"URL to redirect user to after authentication"`
-		}{
-			RedirectURL: "/",
+		Location: redirectURL,
+		SetCookie: []http.Cookie{
+			middleware.SessionCookie(sess.SessionToken, expiresAt, secure),
+			h.stateCookie("", true),
 		},
 	}, nil
 }
@@ -218,23 +221,20 @@ func (h *AuthHandlers) GoogleCallback(ctx context.Context, input *GoogleCallback
 func (h *AuthHandlers) Logout(ctx context.Context, input *struct{}) (*LogoutResponse, error) {
 	userID, ok := middleware.GetUserIDFromContext(ctx)
 	if !ok {
-		return &LogoutResponse{}, nil // Already logged out
+		// Already logged out; still send a clearing cookie so stale browsers
+		// drop their token.
+		return &LogoutResponse{SetCookie: middleware.ClearSessionCookieValue(h.cfg.Server.Env != "development")}, nil
 	}
 
-	// Delete all sessions for this user
 	if err := h.sessionRepo.DeleteByUserID(ctx, userID); err != nil {
 		log.Error().Err(err).Msg("Failed to delete sessions during logout")
 	}
 
-	// Clear cookie
-	w, ok := middleware.GetResponseWriter(ctx)
-	if ok {
-		middleware.ClearSessionCookie(w)
-	}
-
 	log.Info().Str("user_id", userID.String()).Msg("User logged out")
 
-	return &LogoutResponse{}, nil
+	return &LogoutResponse{
+		SetCookie: middleware.ClearSessionCookieValue(h.cfg.Server.Env != "development"),
+	}, nil
 }
 
 func (h *AuthHandlers) Me(ctx context.Context, input *struct{}) (*MeResponse, error) {

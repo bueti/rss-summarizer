@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/bbu/rss-summarizer/backend/internal/api/middleware"
+	domainerrors "github.com/bbu/rss-summarizer/backend/internal/domain/errors"
 	"github.com/bbu/rss-summarizer/backend/internal/domain/preferences"
 	"github.com/bbu/rss-summarizer/backend/internal/repository"
 	"github.com/danielgtaylor/huma/v2"
@@ -70,6 +72,9 @@ func (h *PreferencesHandlers) GetPreferences(ctx context.Context, _ *struct{}) (
 
 	prefs, err := h.repo.GetByUserID(ctx, userID)
 	if err != nil {
+		if _, ok := errors.AsType[*domainerrors.NotFoundError](err); ok {
+			return nil, huma.Error404NotFound("Preferences not found")
+		}
 		return nil, huma.Error500InternalServerError("Failed to get preferences", err)
 	}
 

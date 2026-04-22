@@ -2,11 +2,14 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	stderrors "errors"
 	"fmt"
 	"time"
 
 	"github.com/bbu/rss-summarizer/backend/internal/crypto"
 	"github.com/bbu/rss-summarizer/backend/internal/database"
+	"github.com/bbu/rss-summarizer/backend/internal/domain/errors"
 	"github.com/bbu/rss-summarizer/backend/internal/domain/preferences"
 	"github.com/google/uuid"
 )
@@ -37,6 +40,9 @@ func (r *preferencesRepository) GetByUserID(ctx context.Context, userID uuid.UUI
 	`
 
 	if err := r.db.GetContext(ctx, &prefs, query, userID); err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, &errors.NotFoundError{Resource: "user_preferences", ID: userID.String()}
+		}
 		return nil, fmt.Errorf("failed to get user preferences: %w", err)
 	}
 

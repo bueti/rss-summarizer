@@ -148,10 +148,14 @@ func (r *NewsletterFilterRepository) Update(ctx context.Context, id uuid.UUID, i
 	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" { // unique_violation
+			var name string
+			if input.Name != nil {
+				name = *input.Name
+			}
 			return nil, &errors.DuplicateError{
 				Resource: "newsletter_filter",
 				Field:    "name",
-				Value:    *input.Name,
+				Value:    name,
 			}
 		}
 		return nil, fmt.Errorf("failed to update newsletter filter: %w", err)

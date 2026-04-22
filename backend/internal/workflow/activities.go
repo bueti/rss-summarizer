@@ -12,6 +12,7 @@ import (
 	"github.com/bbu/rss-summarizer/backend/internal/service/rss"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"github.com/rs/zerolog/log"
 )
 
 type Activities struct {
@@ -84,26 +85,29 @@ func (a *Activities) FetchFeedActivity(ctx context.Context, input FetchFeedInput
 
 	var newArticleIDs []uuid.UUID
 	articlesProcessed := 0
+	var itemErrors int
 
-	// Create articles for new items (up to max limit)
+	// Create articles for new items (up to max limit).
+	// Per-user state rows (user_articles) are intentionally not pre-seeded here:
+	// FindByUserIDWithState LEFT-JOINs user_articles and supplies defaults for
+	// missing rows, so pre-seeding would (a) incur N writes per new article,
+	// and (b) risk racing with user interactions on activity retry — a rerun
+	// calling Upsert(is_read=false) would overwrite is_read=true.
 	for _, item := range metadata.Items {
-		// Stop if we've reached the max articles per poll
 		if articlesProcessed >= maxArticles {
 			break
 		}
 
-		// Skip if article already exists (global check)
 		exists, err := a.articleRepo.ExistsByFeedAndURL(ctx, f.ID, item.URL)
 		if err != nil {
-			// Log error but continue processing
-			fmt.Printf("Failed to check article existence for %s: %v\n", item.URL, err)
+			log.Error().Err(err).Str("feed_id", f.ID.String()).Str("url", item.URL).Msg("Failed to check article existence")
+			itemErrors++
 			continue
 		}
 		if exists {
 			continue
 		}
 
-		// Create new global article (no user_id)
 		feedID := f.ID
 		art := &article.Article{
 			ID:               uuid.New(),
@@ -117,29 +121,23 @@ func (a *Activities) FetchFeedActivity(ctx context.Context, input FetchFeedInput
 		}
 
 		if err := a.articleRepo.Create(ctx, art); err != nil {
-			// Log error but continue processing other articles
-			fmt.Printf("Failed to create article %s: %v\n", item.URL, err)
+			log.Error().Err(err).Str("feed_id", f.ID.String()).Str("url", item.URL).Msg("Failed to create article")
+			itemErrors++
 			continue
-		}
-
-		// CRITICAL: Create user_articles for ALL subscribers to this feed
-		subscribers, err := a.subscriptionRepo.FindByFeedID(ctx, f.ID)
-		if err != nil {
-			fmt.Printf("Failed to get feed subscribers: %v\n", err)
-		} else {
-			for _, sub := range subscribers {
-				if err := a.userArticleRepo.Upsert(ctx, sub.UserID, art.ID, false); err != nil {
-					fmt.Printf("Failed to create user_article for user %s: %v\n", sub.UserID, err)
-				}
-			}
 		}
 
 		newArticleIDs = append(newArticleIDs, art.ID)
 		articlesProcessed++
 	}
 
-	// Update feed status on success
 	a.updateFeedSuccess(ctx, f)
+
+	// If every item we tried to process failed, fail the activity so Temporal
+	// retries — a partial success (some articles created) is still considered
+	// progress and returns nil.
+	if itemErrors > 0 && len(newArticleIDs) == 0 {
+		return nil, fmt.Errorf("fetch feed %s: %d items failed and none succeeded", f.ID, itemErrors)
+	}
 
 	return &FetchFeedOutput{NewArticleIDs: newArticleIDs}, nil
 }
@@ -161,7 +159,7 @@ func (a *Activities) updateFeedError(ctx context.Context, f *feed.Feed, err erro
 	f.LastPolledAt = &now
 
 	if updateErr := a.feedRepo.Update(ctx, f); updateErr != nil {
-		fmt.Printf("Failed to update feed error status: %v\n", updateErr)
+		log.Error().Err(updateErr).Str("feed_id", f.ID.String()).Msg("Failed to update feed error status")
 	}
 }
 
@@ -175,7 +173,7 @@ func (a *Activities) updateFeedSuccess(ctx context.Context, f *feed.Feed) {
 	f.LastPolledAt = &now
 
 	if err := a.feedRepo.Update(ctx, f); err != nil {
-		fmt.Printf("Failed to update feed success status: %v\n", err)
+		log.Error().Err(err).Str("feed_id", f.ID.String()).Msg("Failed to update feed success status")
 	}
 }
 
@@ -198,7 +196,7 @@ func (a *Activities) SummarizeArticleActivity(ctx context.Context, input Summari
 
 	// Set status to processing
 	if err := a.articleRepo.UpdateProcessingStatus(ctx, art.ID, article.ProcessingProcessing, nil); err != nil {
-		fmt.Printf("Failed to update article processing status: %v\n", err)
+		log.Error().Err(err).Str("article_id", art.ID.String()).Msg("Failed to update article processing status")
 	}
 
 	// Use original content or full text
@@ -237,13 +235,13 @@ func (a *Activities) SummarizeArticleActivity(ctx context.Context, input Summari
 	if len(summary.Topics) > 0 {
 		if err := a.topicRepo.EnsureTopicsExist(ctx, summary.Topics); err != nil {
 			// Log but don't fail - topics not existing won't prevent article from being displayed
-			fmt.Printf("Failed to ensure topics exist: %v\n", err)
+			log.Error().Err(err).Str("article_id", art.ID.String()).Msg("Failed to ensure topics exist")
 		}
 	}
 
 	// Set status to completed
 	if err := a.articleRepo.UpdateProcessingStatus(ctx, art.ID, article.ProcessingCompleted, nil); err != nil {
-		fmt.Printf("Failed to update article to completed status: %v\n", err)
+		log.Error().Err(err).Str("article_id", art.ID.String()).Msg("Failed to update article to completed status")
 	}
 
 	return nil

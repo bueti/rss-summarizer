@@ -34,6 +34,29 @@ func NewArticleRepository(db *database.DB) ArticleRepository {
 	return &articleRepository{db: db}
 }
 
+// titleCaseASCII upper-cases the first rune of each whitespace-delimited word.
+// strings.Title is deprecated and mishandles non-ASCII casing; we only need
+// ASCII behavior here since acronyms and technical terms are handled separately.
+func titleCaseASCII(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	capitalizeNext := true
+	for _, r := range s {
+		if r == ' ' || r == '-' || r == '/' {
+			capitalizeNext = true
+			b.WriteRune(r)
+			continue
+		}
+		if capitalizeNext && r >= 'a' && r <= 'z' {
+			b.WriteRune(r - ('a' - 'A'))
+		} else {
+			b.WriteRune(r)
+		}
+		capitalizeNext = false
+	}
+	return b.String()
+}
+
 // normalizeTopics deduplicates and normalizes topic names to title case
 func normalizeTopics(topics []string) []string {
 	if len(topics) == 0 {
@@ -99,8 +122,7 @@ func normalizeTopics(topics []string) []string {
 				seen[lowerKey] = acronym
 				result = append(result, acronym)
 			} else {
-				// Use title case for regular words
-				normalized := strings.Title(strings.ToLower(topic))
+				normalized := titleCaseASCII(strings.ToLower(topic))
 				seen[lowerKey] = normalized
 				result = append(result, normalized)
 			}
