@@ -156,62 +156,22 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create Temporal worker")
 	}
 
-	// Start Temporal worker in background with retry
-	go func() {
-		for i := range 3 {
-			log.Info().Msgf("Starting Temporal worker (attempt %d/3)", i+1)
-			if err := temporalWorker.Start(); err != nil {
-				log.Error().Err(err).Msgf("Temporal worker failed on attempt %d", i+1)
-				time.Sleep(time.Second * 2)
-				continue
-			}
-			log.Info().Msg("Temporal worker started successfully")
-			return
-		}
-		log.Fatal().Msg("Failed to start Temporal worker after 3 attempts")
-	}()
+	// Start Temporal worker. Start is non-blocking; if it fails we cannot serve
+	// background work, so fail the process instead of silently degrading.
+	if err := temporalWorker.Start(); err != nil {
+		log.Fatal().Err(err).Msg("Failed to start Temporal worker")
+	}
 	defer temporalWorker.Stop()
+	log.Info().Msg("Temporal worker started")
 
-	// Start feed polling ticker (every 5 minutes)
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
+	// Context tied to server lifetime. Cancelled on SIGTERM/SIGINT so background
+	// loops (pollers, session cleanup) exit cleanly during shutdown.
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	defer bgCancel()
 
-		// Trigger immediately on startup
-		triggerFeedPoller(cfg)
-
-		for range ticker.C {
-			triggerFeedPoller(cfg)
-		}
-	}()
-
-	// Start email polling ticker (every 10 minutes)
-	go func() {
-		ticker := time.NewTicker(10 * time.Minute)
-		defer ticker.Stop()
-
-		// Trigger immediately on startup
-		triggerEmailPoller(cfg)
-
-		for range ticker.C {
-			triggerEmailPoller(cfg)
-		}
-	}()
-
-	// Start session cleanup job (runs hourly)
-	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			count, err := sessionRepo.DeleteExpired(context.Background())
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to clean up expired sessions")
-			} else if count > 0 {
-				log.Info().Int64("count", count).Msg("Cleaned up expired sessions")
-			}
-		}
-	}()
+	go runFeedPoller(bgCtx, temporalClient)
+	go runEmailPoller(bgCtx, temporalClient)
+	go runSessionCleanup(bgCtx, sessionRepo)
 
 	// Setup HTTP server
 	router := chi.NewRouter()
@@ -227,7 +187,6 @@ func main() {
 	}))
 
 	// Add global middlewares
-	router.Use(middleware.InjectResponseWriter()) // Needed for setting cookies
 	router.Use(middleware.LoggingMiddleware(log.Logger))
 
 	// Apply authentication middleware (skips public routes)
@@ -251,7 +210,7 @@ func main() {
 			if cfg.DevMode.Enabled {
 				authHandler = middleware.DevAuthMiddleware(cfg)(next)
 			} else {
-				authHandler = middleware.SessionAuthMiddleware(cfg, sessionRepo, userRepo)(next)
+				authHandler = middleware.SessionAuthMiddleware(cfg, sessionRepo)(next)
 			}
 			authHandler.ServeHTTP(w, r)
 		})
@@ -327,6 +286,7 @@ func main() {
 	<-quit
 
 	log.Info().Msg("Shutting down server...")
+	bgCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -338,62 +298,56 @@ func main() {
 	log.Info().Msg("Server exited")
 }
 
-func triggerFeedPoller(cfg *config.Config) {
-	c, err := client.Dial(client.Options{
-		HostPort:  cfg.Temporal.Host,
-		Namespace: cfg.Temporal.Namespace,
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create Temporal client for feed poller")
-		return
-	}
-	defer c.Close()
-
-	// Execute the feed poller workflow (will complete after one poll cycle)
-	workflowID := fmt.Sprintf("feed-poller-%d", time.Now().Unix())
-	_, err = c.ExecuteWorkflow(
-		context.Background(),
-		client.StartWorkflowOptions{
-			ID:        workflowID,
-			TaskQueue: workflow.FeedPollingTaskQueue,
-		},
-		workflow.FeedPollerWorkflow,
-	)
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to trigger feed poller workflow")
-		return
-	}
-
-	log.Info().Str("workflowID", workflowID).Msg("Triggered feed poller workflow")
+func runFeedPoller(ctx context.Context, c client.Client) {
+	runPollerLoop(ctx, c, 5*time.Minute, "feed-poller", workflow.FeedPollingTaskQueue, workflow.FeedPollerWorkflow)
 }
 
-func triggerEmailPoller(cfg *config.Config) {
-	c, err := client.Dial(client.Options{
-		HostPort:  cfg.Temporal.Host,
-		Namespace: cfg.Temporal.Namespace,
-	})
+func runEmailPoller(ctx context.Context, c client.Client) {
+	runPollerLoop(ctx, c, 10*time.Minute, "email-poller", workflow.EmailPollingTaskQueue, workflow.EmailPollerWorkflow)
+}
+
+func runPollerLoop(ctx context.Context, c client.Client, interval time.Duration, idPrefix, taskQueue string, wf any) {
+	triggerPoll(ctx, c, idPrefix, taskQueue, wf)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			triggerPoll(ctx, c, idPrefix, taskQueue, wf)
+		}
+	}
+}
+
+func triggerPoll(ctx context.Context, c client.Client, idPrefix, taskQueue string, wf any) {
+	workflowID := fmt.Sprintf("%s-%d", idPrefix, time.Now().Unix())
+	_, err := c.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: taskQueue,
+	}, wf)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create Temporal client for email poller")
+		log.Error().Err(err).Str("workflowID", workflowID).Msg("Failed to trigger poller workflow")
 		return
 	}
-	defer c.Close()
+	log.Info().Str("workflowID", workflowID).Msg("Triggered poller workflow")
+}
 
-	// Execute the email poller workflow (will complete after one poll cycle)
-	workflowID := fmt.Sprintf("email-poller-%d", time.Now().Unix())
-	_, err = c.ExecuteWorkflow(
-		context.Background(),
-		client.StartWorkflowOptions{
-			ID:        workflowID,
-			TaskQueue: workflow.EmailPollingTaskQueue,
-		},
-		workflow.EmailPollerWorkflow,
-	)
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to trigger email poller workflow")
-		return
+func runSessionCleanup(ctx context.Context, sessionRepo repository.SessionRepository) {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			count, err := sessionRepo.DeleteExpired(ctx)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to clean up expired sessions")
+			} else if count > 0 {
+				log.Info().Int64("count", count).Msg("Cleaned up expired sessions")
+			}
+		}
 	}
-
-	log.Info().Str("workflowID", workflowID).Msg("Triggered email poller workflow")
 }

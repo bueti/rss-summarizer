@@ -23,3 +23,21 @@ type CreateSubscriptionInput struct {
 	FeedID                uuid.UUID
 	PollFrequencyOverride *int
 }
+
+// SubscribedFeed is a joined view of a feed plus the caller's per-user
+// subscription settings. EffectivePollFrequencyMinutes is the feed default
+// unless the subscription overrides it.
+type SubscribedFeed struct {
+	ID                           uuid.UUID  `db:"id"`
+	URL                          string     `db:"url"`
+	Title                        string     `db:"title"`
+	Description                  string     `db:"description"`
+	EffectivePollFrequencyMinutes int       `db:"effective_poll_frequency_minutes"`
+	LastPolledAt                 *time.Time `db:"last_polled_at"`
+	IsActive                     bool       `db:"is_active"`
+	Status                       string     `db:"status"`
+	LastError                    *string    `db:"last_error"`
+	ErrorCount                   int        `db:"error_count"`
+	CreatedAt                    time.Time  `db:"created_at"`
+	UpdatedAt                    time.Time  `db:"updated_at"`
+}

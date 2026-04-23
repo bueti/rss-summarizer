@@ -275,25 +275,13 @@ func (h *FeedHandlers) ListFeeds(ctx context.Context, input *ListFeedsRequest) (
 		return nil, huma.Error401Unauthorized("User not authenticated")
 	}
 
-	// Get user's subscriptions
-	subscriptions, err := h.subscriptionRepo.FindByUserID(ctx, userID)
+	rows, total, err := h.subscriptionRepo.ListSubscribedFeeds(ctx, userID, input.Limit, input.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+		return nil, fmt.Errorf("failed to list subscribed feeds: %w", err)
 	}
-
-	// Apply offset and limit in memory
-	start := input.Offset
-	end := start + input.Limit
-	if start > len(subscriptions) {
-		start = len(subscriptions)
-	}
-	if end > len(subscriptions) {
-		end = len(subscriptions)
-	}
-	paginatedSubs := subscriptions[start:end]
 
 	response := &ListFeedsResponse{}
-	response.Body.TotalCount = len(subscriptions)
+	response.Body.TotalCount = total
 	response.Body.Limit = input.Limit
 	response.Body.Offset = input.Offset
 	response.Body.Feeds = make([]struct {
@@ -309,22 +297,9 @@ func (h *FeedHandlers) ListFeeds(ctx context.Context, input *ListFeedsRequest) (
 		ErrorCount           int        `json:"error_count"`
 		CreatedAt            time.Time  `json:"created_at"`
 		UpdatedAt            time.Time  `json:"updated_at"`
-	}, 0, len(paginatedSubs))
+	}, 0, len(rows))
 
-	// For each subscription, get the feed
-	for _, sub := range paginatedSubs {
-		f, err := h.feedRepo.FindByID(ctx, sub.FeedID)
-		if err != nil {
-			// Skip if feed not found (shouldn't happen with foreign key)
-			continue
-		}
-
-		// Use subscription override if set, otherwise use feed default
-		pollFreq := f.PollFrequencyMinutes
-		if sub.PollFrequencyOverride != nil {
-			pollFreq = *sub.PollFrequencyOverride
-		}
-
+	for _, f := range rows {
 		response.Body.Feeds = append(response.Body.Feeds, struct {
 			ID                   uuid.UUID  `json:"id"`
 			URL                  string     `json:"url"`
@@ -343,7 +318,7 @@ func (h *FeedHandlers) ListFeeds(ctx context.Context, input *ListFeedsRequest) (
 			URL:                  f.URL,
 			Title:                f.Title,
 			Description:          f.Description,
-			PollFrequencyMinutes: pollFreq,
+			PollFrequencyMinutes: f.EffectivePollFrequencyMinutes,
 			LastPolledAt:         f.LastPolledAt,
 			IsActive:             f.IsActive,
 			Status:               f.Status,

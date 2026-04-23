@@ -13,6 +13,7 @@ import (
 	"github.com/bbu/rss-summarizer/backend/internal/service/email"
 	"github.com/bbu/rss-summarizer/backend/internal/service/gmail"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 )
 
@@ -120,54 +121,53 @@ func (a *EmailActivities) FetchEmailsActivity(ctx context.Context, input FetchEm
 			updateInput.RefreshToken = &newToken.RefreshToken
 		}
 		if _, err := a.emailSourceRepo.Update(ctx, source.ID, updateInput); err != nil {
-			fmt.Printf("Failed to update email source tokens: %v\n", err)
+			log.Error().Err(err).Str("email_source_id", source.ID.String()).Msg("Failed to update email source tokens")
 		}
 	}
 
 	var newArticleIDs []uuid.UUID
+	var itemErrors int
 
-	// Process each email
+	// Process each email. See FetchFeedActivity for the rationale on not
+	// pre-seeding user_articles; the same LEFT JOIN handles defaults here.
 	for _, msg := range emails {
-		// Check if email matches any filter
 		if !a.matchesFilters(msg, filters) {
 			continue
 		}
 
-		// Check if article already exists (check by email_message_id)
 		exists, err := a.articleRepo.ExistsByEmailMessageID(ctx, msg.ID)
 		if err != nil {
-			fmt.Printf("Failed to check article existence for message %s: %v\n", msg.ID, err)
+			log.Error().Err(err).Str("message_id", msg.ID).Msg("Failed to check article existence")
+			itemErrors++
 			continue
 		}
 
-		// If article already exists, just mark email as read and skip
 		if exists {
 			newToken, err = a.gmailService.MarkAsReadWithToken(ctx, newToken, msg.ID)
 			if err != nil {
-				fmt.Printf("Failed to mark existing email as read: %v\n", err)
+				log.Error().Err(err).Str("message_id", msg.ID).Msg("Failed to mark existing email as read")
 			}
 			continue
 		}
 
-		// Parse email content
 		content, err := email.ParseEmailContent(msg.BodyHTML, msg.BodyPlain)
 		if err != nil {
-			fmt.Printf("Failed to parse email content for message %s: %v\n", msg.ID, err)
+			log.Error().Err(err).Str("message_id", msg.ID).Msg("Failed to parse email content")
+			itemErrors++
 			continue
 		}
 
 		if content == "" {
-			fmt.Printf("No content extracted from message %s\n", msg.ID)
+			log.Warn().Str("message_id", msg.ID).Msg("No content extracted from email")
 			continue
 		}
 
-		// Create article from email
 		art := &article.Article{
 			ID:               uuid.New(),
-			FeedID:           nil,        // No feed for email-sourced articles
-			EmailSourceID:    &source.ID, // Link to email source for filtering
+			FeedID:           nil,
+			EmailSourceID:    &source.ID,
 			Title:            msg.Subject,
-			URL:              "", // Emails don't have URLs
+			URL:              "",
 			PublishedAt:      &msg.Date,
 			OriginalContent:  content,
 			SourceType:       "email",
@@ -176,21 +176,16 @@ func (a *EmailActivities) FetchEmailsActivity(ctx context.Context, input FetchEm
 		}
 
 		if err := a.articleRepo.Create(ctx, art); err != nil {
-			fmt.Printf("Failed to create article from email %s: %v\n", msg.ID, err)
+			log.Error().Err(err).Str("message_id", msg.ID).Msg("Failed to create article from email")
+			itemErrors++
 			continue
-		}
-
-		// Create user_article entry for the email source owner
-		if err := a.userArticleRepo.Upsert(ctx, source.UserID, art.ID, false); err != nil {
-			fmt.Printf("Failed to create user_article for email %s: %v\n", msg.ID, err)
 		}
 
 		newArticleIDs = append(newArticleIDs, art.ID)
 
-		// Mark email as read after successful processing
 		newToken, err = a.gmailService.MarkAsReadWithToken(ctx, newToken, msg.ID)
 		if err != nil {
-			fmt.Printf("Failed to mark email as read: %v\n", err)
+			log.Error().Err(err).Str("message_id", msg.ID).Msg("Failed to mark email as read")
 		}
 	}
 
@@ -212,7 +207,11 @@ func (a *EmailActivities) FetchEmailsActivity(ctx context.Context, input FetchEm
 	}
 
 	if _, err := a.emailSourceRepo.Update(ctx, source.ID, updateInput); err != nil {
-		fmt.Printf("Failed to update email source: %v\n", err)
+		log.Error().Err(err).Str("email_source_id", source.ID.String()).Msg("Failed to update email source")
+	}
+
+	if itemErrors > 0 && len(newArticleIDs) == 0 {
+		return nil, fmt.Errorf("fetch emails from %s: %d messages failed and none succeeded", source.ID, itemErrors)
 	}
 
 	return &FetchEmailsOutput{NewArticleIDs: newArticleIDs}, nil
@@ -287,6 +286,6 @@ func (a *EmailActivities) updateEmailSourceError(ctx context.Context, source *em
 	}
 
 	if _, updateErr := a.emailSourceRepo.Update(ctx, source.ID, updateInput); updateErr != nil {
-		fmt.Printf("Failed to update email source error status: %v\n", updateErr)
+		log.Error().Err(updateErr).Str("email_source_id", source.ID.String()).Msg("Failed to update email source error status")
 	}
 }

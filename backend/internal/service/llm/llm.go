@@ -160,8 +160,8 @@ func (s *service) summarizeWithKey(ctx context.Context, title, content, apiKey s
 		return nil, fmt.Errorf("failed to parse summary response: %w", err)
 	}
 
-	// Normalize and deduplicate topics
-	normalizedTopics := normalizeTopics(summaryResp.Topics)
+	// Normalize and deduplicate topics, then cap to the configured max.
+	normalizedTopics := capTopics(normalizeTopics(summaryResp.Topics))
 
 	return &ArticleSummary{
 		Summary:         summaryResp.Summary,
@@ -307,8 +307,8 @@ func (s *service) SummarizeArticleWithConfig(ctx context.Context, title, content
 		return nil, fmt.Errorf("failed to parse summary response: %w", err)
 	}
 
-	// Normalize and deduplicate topics
-	normalizedTopics := normalizeTopics(summaryResp.Topics)
+	// Normalize and deduplicate topics, then cap to the configured max.
+	normalizedTopics := capTopics(normalizeTopics(summaryResp.Topics))
 
 	return &ArticleSummary{
 		Summary:         summaryResp.Summary,
@@ -462,15 +462,21 @@ func normalizeTopics(topics []string) []string {
 		if _, exists := seen[lowerTopic]; !exists {
 			seen[lowerTopic] = topic
 			result = append(result, topic)
-
-			// Limit to 2 topics (stricter than before)
-			if len(result) >= 2 {
-				break
-			}
 		}
 	}
 
 	return result
+}
+
+// maxTopicsPerArticle caps the topic count stored on an article. The LLM is
+// instructed to return at most 2; this is the enforcement side.
+const maxTopicsPerArticle = 2
+
+func capTopics(topics []string) []string {
+	if len(topics) > maxTopicsPerArticle {
+		return topics[:maxTopicsPerArticle]
+	}
+	return topics
 }
 
 func buildSummarizationPrompt(title, content string) string {

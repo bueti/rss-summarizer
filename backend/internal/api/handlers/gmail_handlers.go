@@ -58,10 +58,7 @@ type GmailCallbackRequest struct {
 }
 
 type GmailCallbackResponse struct {
-	Body struct {
-		Success bool   `json:"success"`
-		Message string `json:"message"`
-	}
+	Location string `header:"Location"`
 }
 
 func (h *GmailHandlers) Register(api huma.API) {
@@ -75,12 +72,13 @@ func (h *GmailHandlers) Register(api huma.API) {
 	}, h.ConnectGmail)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "gmail-callback",
-		Method:      http.MethodGet,
-		Path:        "/v1/auth/gmail/callback",
-		Summary:     "Handle Gmail OAuth callback",
-		Description: "Processes the Gmail OAuth callback and stores access tokens",
-		Tags:        []string{"Gmail"},
+		OperationID:   "gmail-callback",
+		Method:        http.MethodGet,
+		Path:          "/v1/auth/gmail/callback",
+		Summary:       "Handle Gmail OAuth callback",
+		Description:   "Processes the Gmail OAuth callback and stores access tokens",
+		Tags:          []string{"Gmail"},
+		DefaultStatus: http.StatusFound,
 	}, h.GmailCallback)
 }
 
@@ -116,29 +114,22 @@ func (h *GmailHandlers) ConnectGmail(ctx context.Context, input *struct{}) (*Con
 
 func (h *GmailHandlers) GmailCallback(ctx context.Context, input *GmailCallbackRequest) (*GmailCallbackResponse, error) {
 	log.Info().
-		Str("code", input.Code[:10]+"...").
-		Str("state", input.State[:10]+"...").
+		Str("code", truncateForLog(input.Code)).
+		Str("state", truncateForLog(input.State)).
 		Msg("Processing Gmail OAuth callback")
 
-	// Verify and extract userID from state token
 	userID, err := h.verifyStateToken(input.State)
 	if err != nil {
 		log.Error().Err(err).Msg("Invalid or expired state token")
 		return nil, huma.Error400BadRequest("Invalid or expired state token")
 	}
 
-	// Exchange authorization code for tokens
 	token, err := h.gmailService.ExchangeCode(ctx, input.Code)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to exchange OAuth code")
 		return nil, huma.Error400BadRequest(fmt.Sprintf("Failed to exchange code: %v", err))
 	}
 
-	log.Info().
-		Str("user_id", userID.String()).
-		Msg("Successfully exchanged OAuth code for token")
-
-	// Get user's email address from Gmail
 	emailAddress, err := h.gmailService.GetUserEmail(ctx, token)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get user email from Gmail")
@@ -150,7 +141,6 @@ func (h *GmailHandlers) GmailCallback(ctx context.Context, input *GmailCallbackR
 		Str("email", emailAddress).
 		Msg("Retrieved email address from Gmail")
 
-	// Check if this email source already exists for this user
 	existingSources, err := h.emailSourceRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing email sources: %w", err)
@@ -158,14 +148,12 @@ func (h *GmailHandlers) GmailCallback(ctx context.Context, input *GmailCallbackR
 
 	for _, source := range existingSources {
 		if source.EmailAddress == emailAddress && source.Provider == email_source.ProviderGmail {
-			// Update existing source with new tokens
-			input := &email_source.UpdateEmailSourceInput{
+			updateInput := &email_source.UpdateEmailSourceInput{
 				AccessToken:    &token.AccessToken,
 				RefreshToken:   &token.RefreshToken,
 				TokenExpiresAt: &token.Expiry,
 			}
-			_, err := h.emailSourceRepo.Update(ctx, source.ID, input)
-			if err != nil {
+			if _, err := h.emailSourceRepo.Update(ctx, source.ID, updateInput); err != nil {
 				return nil, fmt.Errorf("failed to update email source: %w", err)
 			}
 
@@ -174,28 +162,12 @@ func (h *GmailHandlers) GmailCallback(ctx context.Context, input *GmailCallbackR
 				Str("email", emailAddress).
 				Msg("Updated existing Gmail connection")
 
-			// Redirect to frontend with success
-			w, ok := middleware.GetResponseWriter(ctx)
-			if ok {
-				redirectURL := h.getRedirectURL("/email-sources/callback?status=success&message=Gmail+account+reconnected")
-				w.Header().Set("Location", redirectURL)
-				w.WriteHeader(http.StatusFound)
-				return nil, nil
-			}
-
 			return &GmailCallbackResponse{
-				Body: struct {
-					Success bool   `json:"success"`
-					Message string `json:"message"`
-				}{
-					Success: true,
-					Message: "Gmail account reconnected successfully",
-				},
+				Location: h.getRedirectURL("/email-sources/callback?status=success&message=Gmail+account+reconnected"),
 			}, nil
 		}
 	}
 
-	// Create new email source
 	createInput := &email_source.CreateEmailSourceInput{
 		UserID:         userID,
 		EmailAddress:   emailAddress,
@@ -205,8 +177,7 @@ func (h *GmailHandlers) GmailCallback(ctx context.Context, input *GmailCallbackR
 		TokenExpiresAt: token.Expiry,
 	}
 
-	_, err = h.emailSourceRepo.Create(ctx, createInput)
-	if err != nil {
+	if _, err = h.emailSourceRepo.Create(ctx, createInput); err != nil {
 		return nil, fmt.Errorf("failed to create email source: %w", err)
 	}
 
@@ -215,23 +186,8 @@ func (h *GmailHandlers) GmailCallback(ctx context.Context, input *GmailCallbackR
 		Str("email", emailAddress).
 		Msg("Gmail account connected successfully")
 
-	// Redirect to frontend with success
-	w, ok := middleware.GetResponseWriter(ctx)
-	if ok {
-		redirectURL := h.getRedirectURL("/email-sources/callback?status=success&message=Gmail+account+connected")
-		w.Header().Set("Location", redirectURL)
-		w.WriteHeader(http.StatusFound)
-		return nil, nil
-	}
-
 	return &GmailCallbackResponse{
-		Body: struct {
-			Success bool   `json:"success"`
-			Message string `json:"message"`
-		}{
-			Success: true,
-			Message: "Gmail account connected successfully",
-		},
+		Location: h.getRedirectURL("/email-sources/callback?status=success&message=Gmail+account+connected"),
 	}, nil
 }
 

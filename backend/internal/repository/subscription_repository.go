@@ -17,6 +17,7 @@ type SubscriptionRepository interface {
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]*subscription.UserFeedSubscription, error)
 	FindByFeedID(ctx context.Context, feedID uuid.UUID) ([]*subscription.UserFeedSubscription, error)
 	FindByUserAndFeed(ctx context.Context, userID, feedID uuid.UUID) (*subscription.UserFeedSubscription, error)
+	ListSubscribedFeeds(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*subscription.SubscribedFeed, int, error)
 	Update(ctx context.Context, sub *subscription.UserFeedSubscription) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	DeleteByUserAndFeed(ctx context.Context, userID, feedID uuid.UUID) error
@@ -80,6 +81,43 @@ func (r *subscriptionRepository) FindByFeedID(ctx context.Context, feedID uuid.U
 	}
 
 	return subs, nil
+}
+
+// ListSubscribedFeeds returns a page of feeds the user is actively subscribed
+// to, joined with each subscription's poll-frequency override, plus the total
+// active-subscription count. Replaces the old N+1 FindByUserID + FindByID loop.
+func (r *subscriptionRepository) ListSubscribedFeeds(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*subscription.SubscribedFeed, int, error) {
+	var total int
+	countQuery := `SELECT COUNT(*) FROM user_feed_subscriptions WHERE user_id = $1 AND is_active = true`
+	if err := r.db.GetContext(ctx, &total, countQuery, userID); err != nil {
+		return nil, 0, fmt.Errorf("failed to count subscribed feeds: %w", err)
+	}
+
+	rows := []*subscription.SubscribedFeed{}
+	query := `
+		SELECT
+			f.id,
+			f.url,
+			f.title,
+			f.description,
+			COALESCE(s.poll_frequency_override, f.poll_frequency_minutes) AS effective_poll_frequency_minutes,
+			f.last_polled_at,
+			f.is_active,
+			f.status,
+			f.last_error,
+			f.error_count,
+			s.created_at,
+			s.updated_at
+		FROM user_feed_subscriptions s
+		JOIN feeds f ON f.id = s.feed_id
+		WHERE s.user_id = $1 AND s.is_active = true
+		ORDER BY s.created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	if err := r.db.SelectContext(ctx, &rows, query, userID, limit, offset); err != nil {
+		return nil, 0, fmt.Errorf("failed to list subscribed feeds: %w", err)
+	}
+	return rows, total, nil
 }
 
 func (r *subscriptionRepository) FindByUserAndFeed(ctx context.Context, userID, feedID uuid.UUID) (*subscription.UserFeedSubscription, error) {
