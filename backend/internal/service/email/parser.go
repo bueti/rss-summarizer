@@ -84,24 +84,28 @@ func CleanText(text string) string {
 	return text
 }
 
-// removeUnsubscribeFooter removes common unsubscribe footer patterns
-func removeUnsubscribeFooter(text string) string {
-	// Common unsubscribe patterns
-	patterns := []string{
-		`(?i)unsubscribe.*`,
-		`(?i)if you.*?no longer.*?receive.*`,
-		`(?i)you.*?receiving this.*?because.*`,
-		`(?i)click here to.*?(unsubscribe|opt[- ]out).*`,
-		`(?i)to stop receiving.*`,
-		`(?i)manage.*?preferences.*`,
-		`(?i)©.*?\d{4}.*`, // Copyright notices
-	}
+// footerLinePatterns matches whole lines that look like unsubscribe/footer
+// boilerplate. Anchoring with `(?m)^\s*` + non-matching `$` ensures a single
+// "unsubscribe" word buried mid-paragraph in the article body is not enough
+// to nuke that paragraph — only lines that are *about* unsubscribing get
+// dropped.
+var footerLinePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?im)^\s*unsubscribe\b.*$`),
+	regexp.MustCompile(`(?im)^.*\bclick here\b.*\b(unsubscribe|opt[- ]out)\b.*$`),
+	regexp.MustCompile(`(?im)^.*\bto stop receiving\b.*$`),
+	regexp.MustCompile(`(?im)^.*\bmanage\b.*\bpreferences\b.*$`),
+	regexp.MustCompile(`(?im)^.*\b(if you|you are)\b.*\b(no longer|receiving this)\b.*$`),
+	regexp.MustCompile(`(?im)^\s*(©|copyright)\b.*\d{4}.*$`),
+}
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
+// removeUnsubscribeFooter removes common unsubscribe / footer lines from plain
+// text. It operates line by line so a legitimate paragraph that happens to
+// contain the word "unsubscribe" is preserved; only lines that appear to be
+// footer boilerplate are dropped.
+func removeUnsubscribeFooter(text string) string {
+	for _, re := range footerLinePatterns {
 		text = re.ReplaceAllString(text, "")
 	}
-
 	return text
 }
 

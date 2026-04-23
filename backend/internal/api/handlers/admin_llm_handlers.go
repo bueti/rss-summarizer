@@ -4,22 +4,17 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/bbu/rss-summarizer/backend/internal/api/middleware"
 	"github.com/bbu/rss-summarizer/backend/internal/domain/llmconfig"
 	"github.com/bbu/rss-summarizer/backend/internal/repository"
 	"github.com/danielgtaylor/huma/v2"
 )
 
 type AdminLLMHandlers struct {
-	repo     repository.LLMConfigRepository
-	userRepo repository.UserRepository
+	repo repository.LLMConfigRepository
 }
 
-func NewAdminLLMHandlers(repo repository.LLMConfigRepository, userRepo repository.UserRepository) *AdminLLMHandlers {
-	return &AdminLLMHandlers{
-		repo:     repo,
-		userRepo: userRepo,
-	}
+func NewAdminLLMHandlers(repo repository.LLMConfigRepository) *AdminLLMHandlers {
+	return &AdminLLMHandlers{repo: repo}
 }
 
 type LLMConfigResponse struct {
@@ -70,17 +65,7 @@ func (h *AdminLLMHandlers) Register(api huma.API) {
 }
 
 func (h *AdminLLMHandlers) GetConfig(ctx context.Context, _ *struct{}) (*GetLLMConfigResponse, error) {
-	// Check if user is admin
-	userID, ok := middleware.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, huma.Error401Unauthorized("Not authenticated")
-	}
-
-	user, err := h.userRepo.FindByID(ctx, userID)
-	if err != nil || !user.IsAdmin() {
-		return nil, huma.Error403Forbidden("Admin access required")
-	}
-
+	// Admin check is enforced by AdminMiddleware on /v1/admin/*.
 	config, err := h.repo.Get(ctx)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Failed to get LLM config", err)
@@ -100,17 +85,7 @@ func (h *AdminLLMHandlers) GetConfig(ctx context.Context, _ *struct{}) (*GetLLMC
 }
 
 func (h *AdminLLMHandlers) UpdateConfig(ctx context.Context, input *UpdateLLMConfigRequest) (*UpdateLLMConfigResponse, error) {
-	// Check if user is admin
-	userID, ok := middleware.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, huma.Error401Unauthorized("Not authenticated")
-	}
-
-	user, err := h.userRepo.FindByID(ctx, userID)
-	if err != nil || !user.IsAdmin() {
-		return nil, huma.Error403Forbidden("Admin access required")
-	}
-
+	// Admin check is enforced by AdminMiddleware on /v1/admin/*.
 	updateInput := &llmconfig.UpdateLLMConfigInput{
 		Provider: nil,
 		Model:    nil,

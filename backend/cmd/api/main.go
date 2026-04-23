@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -189,30 +190,32 @@ func main() {
 	// Add global middlewares
 	router.Use(middleware.LoggingMiddleware(log.Logger))
 
-	// Apply authentication middleware (skips public routes)
+	// Apply authentication middleware (skips public routes). Admin routes get
+	// an extra AdminMiddleware layer so the handlers don't need to reimplement
+	// the role check themselves.
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip auth middleware for public endpoints
 			publicPaths := []string{
 				"/auth/google/login",
 				"/auth/google/callback",
 				"/v1/auth/gmail/callback",
 				"/openapi.json",
 			}
-
 			if slices.Contains(publicPaths, r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Apply appropriate auth middleware for other routes
-			var authHandler http.Handler
-			if cfg.DevMode.Enabled {
-				authHandler = middleware.DevAuthMiddleware(cfg)(next)
-			} else {
-				authHandler = middleware.SessionAuthMiddleware(cfg, sessionRepo)(next)
+			handler := next
+			if strings.HasPrefix(r.URL.Path, "/v1/admin/") {
+				handler = middleware.AdminMiddleware(userRepo)(handler)
 			}
-			authHandler.ServeHTTP(w, r)
+			if cfg.DevMode.Enabled {
+				handler = middleware.DevAuthMiddleware(cfg)(handler)
+			} else {
+				handler = middleware.SessionAuthMiddleware(cfg, sessionRepo)(handler)
+			}
+			handler.ServeHTTP(w, r)
 		})
 	})
 
@@ -253,7 +256,7 @@ func main() {
 	newsletterFilterHandlers.Register(api)
 
 	// Register admin handlers (require admin role - checked in handlers)
-	adminLLMHandlers := handlers.NewAdminLLMHandlers(llmConfigRepo, userRepo)
+	adminLLMHandlers := handlers.NewAdminLLMHandlers(llmConfigRepo)
 	adminLLMHandlers.Register(api)
 
 	adminUserHandlers := handlers.NewAdminUserHandlers(userRepo)
