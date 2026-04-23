@@ -61,9 +61,9 @@ type ListArticlesRequest struct {
 	EmailSourceID    string `query:"email_source_id" format:"uuid" doc:"Filter by email source ID"`
 	MinImportance    int    `query:"min_importance" minimum:"1" maximum:"5" doc:"Minimum importance score"`
 	Topic            string `query:"topic" doc:"Filter by topic"`
-	IsRead           *bool  `query:"is_read" doc:"Filter by read status"`
-	IsSaved          *bool  `query:"is_saved" doc:"Filter by saved status"`
-	IsArchived       *bool  `query:"is_archived" doc:"Filter by archived status"`
+	IsRead           string `query:"is_read" enum:"true,false" doc:"Filter by read status"`
+	IsSaved          string `query:"is_saved" enum:"true,false" doc:"Filter by saved status"`
+	IsArchived       string `query:"is_archived" enum:"true,false" doc:"Filter by archived status"`
 	ProcessingStatus string `query:"processing_status" doc:"Filter by processing status (pending/processing/completed/failed)"`
 	SortBy           string `query:"sort_by" enum:"date,importance" doc:"Sort order: date (newest first) or importance (highest first)"`
 	Limit            int    `query:"limit" default:"50" maximum:"100" doc:"Results per page"`
@@ -242,16 +242,19 @@ func (h *ArticleHandlers) ListArticles(ctx context.Context, input *ListArticlesR
 		filters.Topic = &input.Topic
 	}
 
-	if input.IsRead != nil {
-		filters.IsRead = input.IsRead
+	// Huma's `enum:"true,false"` rejects any other value with a 400, so a
+	// non-empty string here is guaranteed to be exactly "true" or "false".
+	if v := input.IsRead; v != "" {
+		b := v == "true"
+		filters.IsRead = &b
 	}
-
-	if input.IsSaved != nil {
-		filters.IsSaved = input.IsSaved
+	if v := input.IsSaved; v != "" {
+		b := v == "true"
+		filters.IsSaved = &b
 	}
-
-	if input.IsArchived != nil {
-		filters.IsArchived = input.IsArchived
+	if v := input.IsArchived; v != "" {
+		b := v == "true"
+		filters.IsArchived = &b
 	}
 
 	if input.ProcessingStatus != "" {
