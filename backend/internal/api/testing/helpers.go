@@ -141,7 +141,7 @@ func NewTestServer(t *testing.T) *TestServer {
 	healthHandlers := handlers.NewHealthHandlers(db)
 	healthHandlers.Register(api)
 
-	feedHandlers := handlers.NewFeedHandlers(feedRepo, subscriptionRepo, rssService)
+	feedHandlers := handlers.NewFeedHandlers(feedRepo, subscriptionRepo, rssService, nil) // nil temporal client for tests
 	feedHandlers.Register(api)
 
 	articleHandlers := handlers.NewArticleHandlers(articleRepo, userArticleRepo, nil) // nil temporal client for tests

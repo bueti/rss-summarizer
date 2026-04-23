@@ -12,6 +12,7 @@ import (
 	"github.com/bbu/rss-summarizer/backend/internal/workflow"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
+	enums "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 )
 
@@ -60,9 +61,9 @@ type ListArticlesRequest struct {
 	EmailSourceID    string `query:"email_source_id" format:"uuid" doc:"Filter by email source ID"`
 	MinImportance    int    `query:"min_importance" minimum:"1" maximum:"5" doc:"Minimum importance score"`
 	Topic            string `query:"topic" doc:"Filter by topic"`
-	IsRead           string `query:"is_read" doc:"Filter by read status (true/false)"`
-	IsSaved          string `query:"is_saved" doc:"Filter by saved status (true/false)"`
-	IsArchived       string `query:"is_archived" doc:"Filter by archived status (true/false)"`
+	IsRead           *bool  `query:"is_read" doc:"Filter by read status"`
+	IsSaved          *bool  `query:"is_saved" doc:"Filter by saved status"`
+	IsArchived       *bool  `query:"is_archived" doc:"Filter by archived status"`
 	ProcessingStatus string `query:"processing_status" doc:"Filter by processing status (pending/processing/completed/failed)"`
 	SortBy           string `query:"sort_by" enum:"date,importance" doc:"Sort order: date (newest first) or importance (highest first)"`
 	Limit            int    `query:"limit" default:"50" maximum:"100" doc:"Results per page"`
@@ -241,19 +242,16 @@ func (h *ArticleHandlers) ListArticles(ctx context.Context, input *ListArticlesR
 		filters.Topic = &input.Topic
 	}
 
-	if input.IsRead != "" {
-		isRead := input.IsRead == "true"
-		filters.IsRead = &isRead
+	if input.IsRead != nil {
+		filters.IsRead = input.IsRead
 	}
 
-	if input.IsSaved != "" {
-		isSaved := input.IsSaved == "true"
-		filters.IsSaved = &isSaved
+	if input.IsSaved != nil {
+		filters.IsSaved = input.IsSaved
 	}
 
-	if input.IsArchived != "" {
-		isArchived := input.IsArchived == "true"
-		filters.IsArchived = &isArchived
+	if input.IsArchived != nil {
+		filters.IsArchived = input.IsArchived
 	}
 
 	if input.ProcessingStatus != "" {
@@ -465,17 +463,21 @@ func (h *ArticleHandlers) RetryArticle(ctx context.Context, input *RetryArticleR
 		return nil, fmt.Errorf("failed to reset processing status: %w", err)
 	}
 
-	// Trigger Temporal workflow to process this article
+	// Use the canonical summarize-article-<uuid> workflow ID so the monitoring
+	// UI can still correlate retries with the article via parseWorkflowID.
+	// WorkflowIDReusePolicy allows a new execution once the previous one
+	// closed; we've already rejected in-flight retries above.
 	workflowOptions := client.StartWorkflowOptions{
-		ID:        "summarize-article-reprocess-" + articleID.String(),
-		TaskQueue: workflow.FeedPollingTaskQueue,
+		ID:                    "summarize-article-" + articleID.String(),
+		TaskQueue:             workflow.FeedPollingTaskQueue,
+		WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 	}
 
-	_, err = h.temporalClient.ExecuteWorkflow(ctx, workflowOptions, workflow.SummarizeArticleWorkflow, articleID)
-	if err != nil {
-		// If workflow start fails, set status to failed
+	if _, err = h.temporalClient.ExecuteWorkflow(ctx, workflowOptions, workflow.SummarizeArticleWorkflow, articleID); err != nil {
 		errMsg := fmt.Sprintf("failed to start workflow: %v", err)
-		h.articleRepo.UpdateProcessingStatus(ctx, articleID, article.ProcessingFailed, &errMsg)
+		if updateErr := h.articleRepo.UpdateProcessingStatus(ctx, articleID, article.ProcessingFailed, &errMsg); updateErr != nil {
+			return nil, fmt.Errorf("failed to trigger workflow (and failed to mark article failed: %v): %w", updateErr, err)
+		}
 		return nil, fmt.Errorf("failed to trigger article processing workflow: %w", err)
 	}
 

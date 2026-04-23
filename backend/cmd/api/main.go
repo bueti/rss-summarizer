@@ -227,7 +227,7 @@ func main() {
 	healthHandlers := handlers.NewHealthHandlers(db)
 	healthHandlers.Register(api)
 
-	feedHandlers := handlers.NewFeedHandlers(feedRepo, subscriptionRepo, rssService)
+	feedHandlers := handlers.NewFeedHandlers(feedRepo, subscriptionRepo, rssService, temporalClient)
 	feedHandlers.Register(api)
 
 	articleHandlers := handlers.NewArticleHandlers(articleRepo, userArticleRepo, temporalClient)
