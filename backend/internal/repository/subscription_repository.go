@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/bbu/rss-summarizer/backend/internal/database"
@@ -125,7 +126,7 @@ func (r *subscriptionRepository) FindByUserAndFeed(ctx context.Context, userID, 
 	query := `SELECT * FROM user_feed_subscriptions WHERE user_id = $1 AND feed_id = $2`
 
 	if err := r.db.GetContext(ctx, &sub, query, userID, feedID); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "subscription", ID: fmt.Sprintf("user=%s,feed=%s", userID, feedID)}
 		}
 		return nil, fmt.Errorf("failed to find subscription: %w", err)

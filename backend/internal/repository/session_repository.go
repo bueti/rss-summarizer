@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/bbu/rss-summarizer/backend/internal/database"
@@ -77,7 +78,7 @@ func (r *sessionRepository) FindByToken(ctx context.Context, token string) (*ses
 	`
 
 	if err := r.db.GetContext(ctx, &s, query, token); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "session", ID: "token"}
 		}
 		return nil, fmt.Errorf("failed to find session: %w", err)

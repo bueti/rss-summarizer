@@ -242,6 +242,7 @@ func main() {
 	// Register Gmail OAuth handlers
 	gmailHandlers := handlers.NewGmailHandlers(cfg, gmailService, emailSourceRepo, db)
 	gmailHandlers.Register(api)
+	go gmailHandlers.RunStateTokenCleanup(bgCtx)
 
 	// Register email source handlers
 	emailSourceHandlers := handlers.NewEmailSourceHandlers(emailSourceRepo)

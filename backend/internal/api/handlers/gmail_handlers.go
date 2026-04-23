@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -20,6 +21,11 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// oauthStateTokenTTL bounds how long a Gmail-OAuth state token is considered
+// fresh. A user typically completes consent in seconds; this is deliberately
+// tight so stolen or leaked tokens have a short window.
+const oauthStateTokenTTL = 15 * time.Minute
+
 type GmailHandlers struct {
 	cfg             *config.Config
 	gmailService    *gmail.Service
@@ -33,17 +39,12 @@ func NewGmailHandlers(
 	emailSourceRepo email_source.Repository,
 	db *database.DB,
 ) *GmailHandlers {
-	h := &GmailHandlers{
+	return &GmailHandlers{
 		cfg:             cfg,
 		gmailService:    gmailService,
 		emailSourceRepo: emailSourceRepo,
 		db:              db,
 	}
-
-	// Clean up expired state tokens every hour
-	go h.cleanupStateTokens()
-
-	return h
 }
 
 type ConnectGmailResponse struct {
@@ -90,7 +91,7 @@ func (h *GmailHandlers) ConnectGmail(ctx context.Context, input *struct{}) (*Con
 	}
 
 	// Generate CSRF state token
-	state, err := h.generateStateToken(userID)
+	state, err := h.generateStateToken(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate state token: %w", err)
 	}
@@ -118,7 +119,7 @@ func (h *GmailHandlers) GmailCallback(ctx context.Context, input *GmailCallbackR
 		Str("state", truncateForLog(input.State)).
 		Msg("Processing Gmail OAuth callback")
 
-	userID, err := h.verifyStateToken(input.State)
+	userID, err := h.verifyStateToken(ctx, input.State)
 	if err != nil {
 		log.Error().Err(err).Msg("Invalid or expired state token")
 		return nil, huma.Error400BadRequest("Invalid or expired state token")
@@ -191,8 +192,8 @@ func (h *GmailHandlers) GmailCallback(ctx context.Context, input *GmailCallbackR
 	}, nil
 }
 
-// generateStateToken generates a random state token for CSRF protection
-func (h *GmailHandlers) generateStateToken(userID uuid.UUID) (string, error) {
+// generateStateToken generates a random state token for CSRF protection.
+func (h *GmailHandlers) generateStateToken(ctx context.Context, userID uuid.UUID) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -200,65 +201,61 @@ func (h *GmailHandlers) generateStateToken(userID uuid.UUID) (string, error) {
 
 	state := base64.URLEncoding.EncodeToString(b)
 
-	// Store in database
 	query := `INSERT INTO oauth_state_tokens (state, user_id, created_at) VALUES ($1, $2, $3)`
-	_, err := h.db.ExecContext(context.Background(), query, state, userID, time.Now())
-	if err != nil {
+	if _, err := h.db.ExecContext(ctx, query, state, userID, time.Now()); err != nil {
 		return "", fmt.Errorf("failed to store state token: %w", err)
 	}
 
 	return state, nil
 }
 
-// verifyStateToken verifies a state token and returns the associated userID
-func (h *GmailHandlers) verifyStateToken(state string) (uuid.UUID, error) {
-	ctx := context.Background()
-
-	// Fetch token from database
+// verifyStateToken atomically consumes a state token and returns the bound
+// userID. Using DELETE ... RETURNING makes verification and single-use
+// consumption one operation, closing the race where two callbacks with the
+// same state could both pass a SELECT check.
+func (h *GmailHandlers) verifyStateToken(ctx context.Context, state string) (uuid.UUID, error) {
 	var userID uuid.UUID
-	var createdAt time.Time
-	query := `SELECT user_id, created_at FROM oauth_state_tokens WHERE state = $1`
-	err := h.db.QueryRowContext(ctx, query, state).Scan(&userID, &createdAt)
-
-	if err == sql.ErrNoRows {
-		return uuid.Nil, fmt.Errorf("state token not found")
-	}
+	query := `
+		DELETE FROM oauth_state_tokens
+		WHERE state = $1 AND created_at > NOW() - $2::interval
+		RETURNING user_id
+	`
+	interval := fmt.Sprintf("%d seconds", int(oauthStateTokenTTL.Seconds()))
+	err := h.db.QueryRowContext(ctx, query, state, interval).Scan(&userID)
 	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			// Opportunistically purge an expired row with the same state so it
+			// doesn't linger until the background cleanup fires.
+			_, _ = h.db.ExecContext(ctx, `DELETE FROM oauth_state_tokens WHERE state = $1`, state)
+			return uuid.Nil, fmt.Errorf("state token not found or expired")
+		}
 		return uuid.Nil, fmt.Errorf("failed to verify state token: %w", err)
 	}
-
-	// Check if token is expired (15 minutes)
-	if time.Since(createdAt) > 15*time.Minute {
-		// Delete expired token
-		_, _ = h.db.ExecContext(ctx, `DELETE FROM oauth_state_tokens WHERE state = $1`, state)
-		return uuid.Nil, fmt.Errorf("state token expired")
-	}
-
-	// Remove token after use (one-time use)
-	_, err = h.db.ExecContext(ctx, `DELETE FROM oauth_state_tokens WHERE state = $1`, state)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("failed to delete state token: %w", err)
-	}
-
 	return userID, nil
 }
 
-// cleanupStateTokens periodically removes expired state tokens
-func (h *GmailHandlers) cleanupStateTokens() {
-	ticker := time.NewTicker(1 * time.Hour)
+// RunStateTokenCleanup periodically removes expired state tokens until ctx is
+// cancelled. Intended to be started as a goroutine from main() so the lifetime
+// is tied to the server's lifetime.
+func (h *GmailHandlers) RunStateTokenCleanup(ctx context.Context) {
+	const interval = time.Hour
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-
-	for range ticker.C {
-		// Delete tokens older than 15 minutes
-		query := `DELETE FROM oauth_state_tokens WHERE created_at < NOW() - INTERVAL '15 minutes'`
-		result, err := h.db.ExecContext(context.Background(), query)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to cleanup expired state tokens")
-			continue
-		}
-
-		if rowsAffected, _ := result.RowsAffected(); rowsAffected > 0 {
-			log.Info().Int64("count", rowsAffected).Msg("Cleaned up expired OAuth state tokens")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			query := `DELETE FROM oauth_state_tokens WHERE created_at < NOW() - $1::interval`
+			ttlArg := fmt.Sprintf("%d seconds", int(oauthStateTokenTTL.Seconds()))
+			result, err := h.db.ExecContext(ctx, query, ttlArg)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to cleanup expired state tokens")
+				continue
+			}
+			if rowsAffected, _ := result.RowsAffected(); rowsAffected > 0 {
+				log.Info().Int64("count", rowsAffected).Msg("Cleaned up expired OAuth state tokens")
+			}
 		}
 	}
 }

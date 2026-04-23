@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/bbu/rss-summarizer/backend/internal/database"
@@ -73,7 +74,7 @@ func (r *userArticleRepository) FindByUserAndArticle(ctx context.Context, userID
 	query := `SELECT * FROM user_articles WHERE user_id = $1 AND article_id = $2`
 
 	if err := r.db.GetContext(ctx, &ua, query, userID, articleID); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "user_article", ID: fmt.Sprintf("user=%s,article=%s", userID, articleID)}
 		}
 		return nil, fmt.Errorf("failed to find user_article: %w", err)

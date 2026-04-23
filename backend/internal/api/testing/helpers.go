@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -365,7 +366,7 @@ func GetArticleUserState(t *testing.T, ts *TestServer, articleID uuid.UUID) (isR
 		FROM user_articles
 		WHERE user_id = $1 AND article_id = $2
 	`, ts.UserID, articleID).Scan(&isRead, &isSaved, &isArchived)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, false, false
 	}
 	if err != nil {

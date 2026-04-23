@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 	"strings"
 
@@ -184,7 +185,7 @@ func (r *articleRepository) FindByID(ctx context.Context, id uuid.UUID) (*articl
 	query := `SELECT * FROM articles WHERE id = $1`
 
 	if err := r.db.GetContext(ctx, &a, query, id); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "article", ID: id.String()}
 		}
 		return nil, fmt.Errorf("failed to find article: %w", err)
