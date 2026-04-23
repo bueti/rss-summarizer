@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/bbu/rss-summarizer/backend/internal/database"
@@ -64,7 +65,7 @@ func (r *NewsletterFilterRepository) FindByID(ctx context.Context, id uuid.UUID)
 	query := `SELECT * FROM newsletter_filters WHERE id = $1`
 
 	if err := r.db.GetContext(ctx, &filter, query, id); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "newsletter_filter", ID: id.String()}
 		}
 		return nil, fmt.Errorf("failed to find newsletter filter: %w", err)

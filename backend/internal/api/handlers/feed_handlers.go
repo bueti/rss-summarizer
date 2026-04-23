@@ -13,25 +13,31 @@ import (
 	"github.com/bbu/rss-summarizer/backend/internal/domain/subscription"
 	"github.com/bbu/rss-summarizer/backend/internal/repository"
 	"github.com/bbu/rss-summarizer/backend/internal/service/rss"
+	"github.com/bbu/rss-summarizer/backend/internal/workflow"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
+	enums "go.temporal.io/api/enums/v1"
+	"go.temporal.io/sdk/client"
 )
 
 type FeedHandlers struct {
 	feedRepo         repository.FeedRepository
 	subscriptionRepo repository.SubscriptionRepository
 	rssService       rss.Service
+	temporalClient   client.Client
 }
 
 func NewFeedHandlers(
 	feedRepo repository.FeedRepository,
 	subscriptionRepo repository.SubscriptionRepository,
 	rssService rss.Service,
+	temporalClient client.Client,
 ) *FeedHandlers {
 	return &FeedHandlers{
 		feedRepo:         feedRepo,
 		subscriptionRepo: subscriptionRepo,
 		rssService:       rssService,
+		temporalClient:   temporalClient,
 	}
 }
 
@@ -436,8 +442,7 @@ func (h *FeedHandlers) RefreshFeed(ctx context.Context, input *RefreshFeedReques
 	}
 
 	// Verify user has subscription to this feed
-	_, err = h.subscriptionRepo.FindByUserAndFeed(ctx, userID, feedID)
-	if err != nil {
+	if _, err := h.subscriptionRepo.FindByUserAndFeed(ctx, userID, feedID); err != nil {
 		var notFoundErr *domerrors.NotFoundError
 		if errors.As(err, &notFoundErr) {
 			return nil, huma.Error404NotFound("Feed not found or not subscribed")
@@ -445,18 +450,16 @@ func (h *FeedHandlers) RefreshFeed(ctx context.Context, input *RefreshFeedReques
 		return nil, fmt.Errorf("failed to check subscription: %w", err)
 	}
 
-	f, err := h.feedRepo.FindByID(ctx, feedID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get feed: %w", err)
+	// Start the ProcessFeedWorkflow directly instead of rewinding last_polled_at
+	// and relying on the 5-minute poller. Matches the retry-article flow.
+	workflowOptions := client.StartWorkflowOptions{
+		ID:                       "process-feed-" + feedID.String(),
+		TaskQueue:                workflow.FeedPollingTaskQueue,
+		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 	}
-
-	// TODO: Trigger Temporal workflow to process this feed immediately
-	// For now, just update last_polled_at to make it eligible for polling
-	now := time.Now().Add(-1 * time.Hour) // Set it to an hour ago so it's immediately eligible
-	f.LastPolledAt = &now
-
-	if err := h.feedRepo.Update(ctx, f); err != nil {
-		return nil, fmt.Errorf("failed to update feed: %w", err)
+	if _, err := h.temporalClient.ExecuteWorkflow(ctx, workflowOptions, workflow.ProcessFeedWorkflow, feedID); err != nil {
+		return nil, fmt.Errorf("failed to start feed refresh workflow: %w", err)
 	}
 
 	return &struct{}{}, nil

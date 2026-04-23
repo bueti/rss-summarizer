@@ -11,6 +11,7 @@ import (
 	"github.com/bbu/rss-summarizer/backend/internal/repository"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 type TopicHandlers struct {
@@ -185,10 +186,11 @@ func (h *TopicHandlers) CreateTopic(ctx context.Context, input *CreateTopicReque
 		return nil, huma.Error500InternalServerError("Failed to create topic", err)
 	}
 
-	// Set user's preference to 'normal' by default
+	// Seed the creator's preference to 'normal'. If this fails the frontend
+	// still renders the topic because queries default missing preferences to
+	// 'normal' — so log and continue rather than failing the create.
 	if err := h.repo.UpsertPreference(ctx, userID, t.ID, "normal"); err != nil {
-		// Log error but don't fail the request
-		// The preference will be 'normal' by default anyway
+		log.Error().Err(err).Str("topic_id", t.ID.String()).Str("user_id", userID.String()).Msg("Failed to seed topic preference")
 	}
 
 	return &CreateTopicResponse{Body: *t}, nil

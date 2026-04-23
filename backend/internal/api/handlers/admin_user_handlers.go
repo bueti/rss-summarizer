@@ -72,18 +72,7 @@ func (h *AdminUserHandlers) Register(api huma.API) {
 }
 
 func (h *AdminUserHandlers) ListUsers(ctx context.Context, input *struct{}) (*ListUsersResponse, error) {
-	// Verify caller is admin (should be caught by middleware, but double-check)
-	userID, ok := middleware.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, huma.Error401Unauthorized("Not authenticated")
-	}
-
-	caller, err := h.userRepo.FindByID(ctx, userID)
-	if err != nil || !caller.IsAdmin() {
-		return nil, huma.Error403Forbidden("Admin access required")
-	}
-
-	// Get all users
+	// Admin check is enforced by AdminMiddleware on /v1/admin/*.
 	users, err := h.userRepo.ListAll(ctx)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Failed to list users")
@@ -113,18 +102,13 @@ func (h *AdminUserHandlers) ListUsers(ctx context.Context, input *struct{}) (*Li
 }
 
 func (h *AdminUserHandlers) UpdateUserRole(ctx context.Context, input *UpdateUserRoleRequest) (*UpdateUserRoleResponse, error) {
-	// Verify caller is admin
+	// Admin check is enforced by AdminMiddleware on /v1/admin/*. We still need
+	// the caller ID to prevent an admin removing their own role.
 	callerID, ok := middleware.GetUserIDFromContext(ctx)
 	if !ok {
 		return nil, huma.Error401Unauthorized("Not authenticated")
 	}
 
-	caller, err := h.userRepo.FindByID(ctx, callerID)
-	if err != nil || !caller.IsAdmin() {
-		return nil, huma.Error403Forbidden("Admin access required")
-	}
-
-	// Parse target user ID
 	targetUserID, err := uuid.Parse(input.UserID)
 	if err != nil {
 		return nil, huma.Error400BadRequest("Invalid user ID")

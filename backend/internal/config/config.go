@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/rs/zerolog/log"
 )
 
 type Config struct {
@@ -24,10 +26,11 @@ type DatabaseConfig struct {
 }
 
 type ServerConfig struct {
-	Port         int
-	Env          string
-	FrontendURL  string
-	PublicAPIURL string
+	Port           int
+	Env            string
+	FrontendURL    string
+	PublicAPIURL   string
+	AllowedOrigins []string
 }
 
 type LLMConfig struct {
@@ -57,19 +60,44 @@ func Load() (*Config, error) {
 	// Load .env file if it exists (ignore error in production)
 	_ = godotenv.Load()
 
-	port, _ := strconv.Atoi(getEnv("PORT", "8080"))
-	devMode, _ := strconv.ParseBool(getEnv("DEV_MODE", "false"))
-	sessionDuration, _ := time.ParseDuration(getEnv("SESSION_DURATION", "720h")) // 30 days default
+	port, err := strconv.Atoi(getEnv("PORT", "8080"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid PORT: %w", err)
+	}
+	devMode, err := strconv.ParseBool(getEnv("DEV_MODE", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid DEV_MODE: %w", err)
+	}
+	sessionDuration, err := time.ParseDuration(getEnv("SESSION_DURATION", "720h")) // 30 days default
+	if err != nil {
+		return nil, fmt.Errorf("invalid SESSION_DURATION: %w", err)
+	}
+
+	frontendURL := getEnv("FRONTEND_URL", "http://localhost:5173")
+	// CORS_ORIGINS is an optional comma-separated override; otherwise we allow
+	// FRONTEND_URL. Credentialed CORS requires exact origins — no wildcards.
+	var allowedOrigins []string
+	if raw := os.Getenv("CORS_ORIGINS"); raw != "" {
+		for o := range strings.SplitSeq(raw, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				allowedOrigins = append(allowedOrigins, o)
+			}
+		}
+	} else {
+		allowedOrigins = []string{frontendURL}
+	}
+	log.Info().Strs("allowed_origins", allowedOrigins).Msg("CORS configured")
 
 	cfg := &Config{
 		Database: DatabaseConfig{
 			URL: getEnv("DATABASE_URL", ""),
 		},
 		Server: ServerConfig{
-			Port:         port,
-			Env:          getEnv("ENV", "development"),
-			FrontendURL:  getEnv("FRONTEND_URL", "http://localhost:5173"),
-			PublicAPIURL: getEnv("PUBLIC_API_URL", "http://localhost:8080"),
+			Port:           port,
+			Env:            getEnv("ENV", "development"),
+			FrontendURL:    frontendURL,
+			PublicAPIURL:   getEnv("PUBLIC_API_URL", "http://localhost:8080"),
+			AllowedOrigins: allowedOrigins,
 		},
 		LLM: LLMConfig{
 			APIURL: getEnv("LLM_API_URL", "https://api.openai.com/v1"),

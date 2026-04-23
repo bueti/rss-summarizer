@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/bbu/rss-summarizer/backend/internal/crypto"
@@ -33,7 +34,7 @@ func (r *llmConfigRepository) Get(ctx context.Context) (*llmconfig.LLMConfig, er
 	query := `SELECT * FROM llm_config LIMIT 1`
 
 	if err := r.db.GetContext(ctx, &config, query); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "llm_config", ID: "singleton"}
 		}
 		return nil, fmt.Errorf("failed to get llm config: %w", err)

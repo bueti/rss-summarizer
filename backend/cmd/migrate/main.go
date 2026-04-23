@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -9,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	_ "github.com/lib/pq"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -189,7 +190,7 @@ func markMigrationApplied(db *sql.DB, version string) error {
 func getLastAppliedMigration(db *sql.DB) (string, error) {
 	var version string
 	err := db.QueryRow("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").Scan(&version)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
 	return version, err

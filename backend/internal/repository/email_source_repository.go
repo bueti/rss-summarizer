@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/bbu/rss-summarizer/backend/internal/crypto"
@@ -80,7 +81,7 @@ func (r *EmailSourceRepository) FindByID(ctx context.Context, id uuid.UUID) (*em
 	query := `SELECT * FROM email_sources WHERE id = $1`
 
 	if err := r.db.GetContext(ctx, &source, query, id); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "email_source", ID: id.String()}
 		}
 		return nil, fmt.Errorf("failed to find email source: %w", err)

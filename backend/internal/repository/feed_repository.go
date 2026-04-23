@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/bbu/rss-summarizer/backend/internal/database"
@@ -65,7 +66,7 @@ func (r *feedRepository) FindByID(ctx context.Context, id uuid.UUID) (*feed.Feed
 	query := `SELECT * FROM feeds WHERE id = $1`
 
 	if err := r.db.GetContext(ctx, &f, query, id); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "feed", ID: id.String()}
 		}
 		return nil, fmt.Errorf("failed to find feed: %w", err)
@@ -79,7 +80,7 @@ func (r *feedRepository) FindByURL(ctx context.Context, url string) (*feed.Feed,
 	query := `SELECT * FROM feeds WHERE url = $1`
 
 	if err := r.db.GetContext(ctx, &f, query, url); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "feed", ID: url}
 		}
 		return nil, fmt.Errorf("failed to find feed: %w", err)

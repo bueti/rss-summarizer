@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
@@ -116,10 +117,9 @@ func (s *Service) FetchEmails(ctx context.Context, accessToken, refreshToken str
 func (s *Service) FetchEmailsWithToken(ctx context.Context, token *oauth2.Token, query string, maxResults int64) ([]*EmailMessage, *oauth2.Token, error) {
 	oauthConfig := s.GetOAuthConfig()
 
-	// Log token status before refresh
-	fmt.Printf("Token expiry: %v, Expired: %v\n", token.Expiry, token.Expiry.Before(time.Now()))
+	log.Debug().Time("expiry", token.Expiry).Bool("expired", token.Expiry.Before(time.Now())).Msg("Gmail token status")
 
-	// This client automatically refreshes the token if expired
+	// TokenSource auto-refreshes an expired access token on first use.
 	tokenSource := oauthConfig.TokenSource(ctx, token)
 	client := oauth2.NewClient(ctx, tokenSource)
 
@@ -128,7 +128,6 @@ func (s *Service) FetchEmailsWithToken(ctx context.Context, token *oauth2.Token,
 		return nil, nil, fmt.Errorf("failed to create Gmail service: %w", err)
 	}
 
-	// Fetch message IDs matching the query
 	listCall := gmailService.Users.Messages.List("me").Q(query)
 	if maxResults > 0 {
 		listCall = listCall.MaxResults(maxResults)
@@ -139,27 +138,27 @@ func (s *Service) FetchEmailsWithToken(ctx context.Context, token *oauth2.Token,
 		return nil, nil, fmt.Errorf("failed to list messages: %w", err)
 	}
 
-	// Fetch full details for each message
 	emails := make([]*EmailMessage, 0, len(response.Messages))
 	for _, msg := range response.Messages {
 		email, err := s.fetchMessageDetails(ctx, gmailService, msg.Id)
 		if err != nil {
-			// Log error but continue processing other messages
-			fmt.Printf("Failed to fetch message %s: %v\n", msg.Id, err)
+			log.Error().Err(err).Str("message_id", msg.Id).Msg("Failed to fetch Gmail message")
 			continue
 		}
 		emails = append(emails, email)
 	}
 
-	// Get the potentially refreshed token
+	// Retrieve the (possibly refreshed) token. If this fails the messages have
+	// already been fetched successfully, so we keep them and return the
+	// original token — a refresh will be retried on the next poll.
 	newToken, err := tokenSource.Token()
 	if err != nil {
-		return emails, token, nil // Return emails even if token refresh check fails
+		log.Warn().Err(err).Msg("Failed to read refreshed Gmail token; retaining original")
+		return emails, token, nil
 	}
 
-	// Log if token was refreshed
 	if newToken.AccessToken != token.AccessToken {
-		fmt.Printf("Token was refreshed! New expiry: %v\n", newToken.Expiry)
+		log.Info().Time("new_expiry", newToken.Expiry).Msg("Gmail OAuth token refreshed")
 	}
 
 	return emails, newToken, nil
@@ -304,10 +303,10 @@ func (s *Service) MarkAsReadWithToken(ctx context.Context, token *oauth2.Token, 
 		return nil, fmt.Errorf("failed to mark message as read: %w", err)
 	}
 
-	// Get the potentially refreshed token
 	newToken, err := tokenSource.Token()
 	if err != nil {
-		return token, nil // Return original token if refresh check fails
+		log.Warn().Err(err).Msg("Failed to read refreshed Gmail token after mark-as-read; retaining original")
+		return token, nil
 	}
 
 	return newToken, nil

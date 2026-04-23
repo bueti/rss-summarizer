@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/bbu/rss-summarizer/backend/internal/database"
@@ -50,7 +51,7 @@ func (r *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*user.User
 	query := `SELECT * FROM users WHERE id = $1`
 
 	if err := r.db.GetContext(ctx, &u, query, id); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "user", ID: id.String()}
 		}
 		return nil, fmt.Errorf("failed to find user: %w", err)
@@ -64,7 +65,7 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*user.U
 	query := `SELECT * FROM users WHERE email = $1`
 
 	if err := r.db.GetContext(ctx, &u, query, email); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "user", ID: email}
 		}
 		return nil, fmt.Errorf("failed to find user: %w", err)
@@ -78,7 +79,7 @@ func (r *userRepository) FindByGoogleID(ctx context.Context, googleID string) (*
 	query := `SELECT * FROM users WHERE google_id = $1`
 
 	if err := r.db.GetContext(ctx, &u, query, googleID); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "user", ID: googleID}
 		}
 		return nil, fmt.Errorf("failed to find user by google_id: %w", err)

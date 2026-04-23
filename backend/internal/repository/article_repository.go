@@ -3,12 +3,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
-	"strings"
 
 	"github.com/bbu/rss-summarizer/backend/internal/database"
 	"github.com/bbu/rss-summarizer/backend/internal/domain/article"
 	"github.com/bbu/rss-summarizer/backend/internal/domain/errors"
+	"github.com/bbu/rss-summarizer/backend/internal/service/topicnorm"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
@@ -34,102 +35,10 @@ func NewArticleRepository(db *database.DB) ArticleRepository {
 	return &articleRepository{db: db}
 }
 
-// titleCaseASCII upper-cases the first rune of each whitespace-delimited word.
-// strings.Title is deprecated and mishandles non-ASCII casing; we only need
-// ASCII behavior here since acronyms and technical terms are handled separately.
-func titleCaseASCII(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	capitalizeNext := true
-	for _, r := range s {
-		if r == ' ' || r == '-' || r == '/' {
-			capitalizeNext = true
-			b.WriteRune(r)
-			continue
-		}
-		if capitalizeNext && r >= 'a' && r <= 'z' {
-			b.WriteRune(r - ('a' - 'A'))
-		} else {
-			b.WriteRune(r)
-		}
-		capitalizeNext = false
-	}
-	return b.String()
-}
-
-// normalizeTopics deduplicates and normalizes topic names to title case
+// normalizeTopics is a thin alias to the shared topicnorm.Normalize. Kept as
+// an internal helper so repository code stays package-local.
 func normalizeTopics(topics []string) []string {
-	if len(topics) == 0 {
-		return topics
-	}
-
-	// Common acronyms and technical terms that should stay uppercase
-	acronyms := map[string]string{
-		"ai":      "AI",
-		"api":     "API",
-		"apis":    "APIs",
-		"aws":     "AWS",
-		"gcp":     "GCP",
-		"devops":  "DevOps",
-		"cicd":    "CI/CD",
-		"ml":      "ML",
-		"llm":     "LLM",
-		"llms":    "LLMs",
-		"ui":      "UI",
-		"ux":      "UX",
-		"css":     "CSS",
-		"html":    "HTML",
-		"json":    "JSON",
-		"xml":     "XML",
-		"sql":     "SQL",
-		"nosql":   "NoSQL",
-		"rest":    "REST",
-		"graphql": "GraphQL",
-		"grpc":    "gRPC",
-		"http":    "HTTP",
-		"https":   "HTTPS",
-		"ssh":     "SSH",
-		"tcp":     "TCP",
-		"udp":     "UDP",
-		"dns":     "DNS",
-		"cdn":     "CDN",
-		"saas":    "SaaS",
-		"paas":    "PaaS",
-		"iaas":    "IaaS",
-		"oauth":   "OAuth",
-		"jwt":     "JWT",
-		"tls":     "TLS",
-		"ssl":     "SSL",
-		"vpn":     "VPN",
-	}
-
-	// Use a map to track unique topics (case-insensitive)
-	seen := make(map[string]string) // lowercase -> normalized
-	var result []string
-
-	for _, topic := range topics {
-		topic = strings.TrimSpace(topic)
-		if topic == "" {
-			continue
-		}
-
-		lowerKey := strings.ToLower(topic)
-
-		// Only add if we haven't seen this topic before (case-insensitive)
-		if _, exists := seen[lowerKey]; !exists {
-			// Check if it's a known acronym
-			if acronym, isAcronym := acronyms[lowerKey]; isAcronym {
-				seen[lowerKey] = acronym
-				result = append(result, acronym)
-			} else {
-				normalized := titleCaseASCII(strings.ToLower(topic))
-				seen[lowerKey] = normalized
-				result = append(result, normalized)
-			}
-		}
-	}
-
-	return result
+	return topicnorm.Normalize(topics)
 }
 
 func (r *articleRepository) Create(ctx context.Context, a *article.Article) error {
@@ -184,7 +93,7 @@ func (r *articleRepository) FindByID(ctx context.Context, id uuid.UUID) (*articl
 	query := `SELECT * FROM articles WHERE id = $1`
 
 	if err := r.db.GetContext(ctx, &a, query, id); err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, &errors.NotFoundError{Resource: "article", ID: id.String()}
 		}
 		return nil, fmt.Errorf("failed to find article: %w", err)
