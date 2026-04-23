@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bbu/rss-summarizer/backend/internal/service/topicnorm"
 )
 
 type Service interface {
@@ -342,130 +344,10 @@ func extractJSON(text string) string {
 	return string(textBytes)
 }
 
-// normalizeTopics normalizes topic strings and removes duplicates
+// normalizeTopics delegates to the shared topicnorm package so the LLM and
+// the repository apply identical rules.
 func normalizeTopics(topics []string) []string {
-	if len(topics) == 0 {
-		return topics
-	}
-
-	// Mapping of specific topics to broad categories
-	topicMapping := map[string]string{
-		// Programming Languages
-		"golang":            "Go",
-		"go programming":    "Go",
-		"rust programming":  "Rust",
-		"python programming": "Python",
-		"javascript":        "JavaScript",
-		"typescript":        "TypeScript",
-
-		// Cloud & Infrastructure
-		"k8s":                     "Kubernetes",
-		"kubernetes deployment":   "Kubernetes",
-		"container orchestration": "Kubernetes",
-		"docker containers":       "Docker",
-		"cloud computing":         "Cloud",
-		"aws services":            "AWS",
-		"amazon web services":     "AWS",
-		"google cloud platform":   "GCP",
-		"google cloud":            "GCP",
-		"azure cloud":             "Azure",
-		"cloud infrastructure":    "Cloud",
-
-		// DevOps
-		"devops":                 "DevOps",
-		"ci/cd":                  "DevOps",
-		"continuous integration": "DevOps",
-		"infrastructure as code": "DevOps",
-
-		// Security
-		"cybersecurity":          "Security",
-		"information security":   "Security",
-		"application security":   "Security",
-		"network security":       "Security",
-		"security vulnerability": "Security",
-
-		// AI & ML
-		"artificial intelligence": "AI",
-		"machine learning":        "AI",
-		"deep learning":           "AI",
-		"neural networks":         "AI",
-		"llm":                     "AI",
-		"large language models":   "AI",
-		"chatgpt":                 "AI",
-		"gpt":                     "AI",
-
-		// Databases
-		"postgresql": "Databases",
-		"postgres":   "Databases",
-		"mysql":      "Databases",
-		"mongodb":    "Databases",
-		"sql":        "Databases",
-		"database":   "Databases",
-
-		// Web & APIs
-		"web development":     "Web",
-		"frontend":            "Web",
-		"backend":             "Web",
-		"frontend development": "Web",
-		"backend development":  "Web",
-		"full stack":          "Web",
-		"api development":     "APIs",
-		"rest api":            "APIs",
-		"rest":                "APIs",
-		"graphql":             "APIs",
-
-		// Engineering
-		"software development":  "Engineering",
-		"software engineering":  "Engineering",
-		"code quality":          "Engineering",
-		"software architecture": "Architecture",
-		"system design":         "Architecture",
-		"microservices":         "Architecture",
-
-		// Other
-		"performance optimization": "Performance",
-		"software testing":         "Testing",
-		"unit testing":             "Testing",
-		"integration testing":      "Testing",
-		"test automation":          "Testing",
-		"version control":          "Git",
-		"source control":           "Git",
-		"open source":              "Open Source",
-		"opensource":               "Open Source",
-		"technology":               "Tech",
-	}
-
-	// Use a map for case-insensitive deduplication
-	seen := make(map[string]string) // lowercase -> proper case
-	var result []string
-
-	for _, topic := range topics {
-		// Trim whitespace
-		topic = strings.TrimSpace(topic)
-		if topic == "" {
-			continue
-		}
-
-		// Check if topic should be mapped to a broader category
-		lowerTopic := strings.ToLower(topic)
-		if mappedTopic, exists := topicMapping[lowerTopic]; exists {
-			topic = mappedTopic
-			lowerTopic = strings.ToLower(mappedTopic)
-		} else {
-			// Convert to title case for consistency (capitalize first letter)
-			if len(topic) > 0 {
-				topic = strings.ToUpper(topic[:1]) + strings.ToLower(topic[1:])
-			}
-		}
-
-		// Check for duplicates (case-insensitive)
-		if _, exists := seen[lowerTopic]; !exists {
-			seen[lowerTopic] = topic
-			result = append(result, topic)
-		}
-	}
-
-	return result
+	return topicnorm.Normalize(topics)
 }
 
 // maxTopicsPerArticle caps the topic count stored on an article. The LLM is

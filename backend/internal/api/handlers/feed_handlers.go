@@ -453,9 +453,10 @@ func (h *FeedHandlers) RefreshFeed(ctx context.Context, input *RefreshFeedReques
 	// Start the ProcessFeedWorkflow directly instead of rewinding last_polled_at
 	// and relying on the 5-minute poller. Matches the retry-article flow.
 	workflowOptions := client.StartWorkflowOptions{
-		ID:                    "process-feed-" + feedID.String(),
-		TaskQueue:             workflow.FeedPollingTaskQueue,
-		WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		ID:                       "process-feed-" + feedID.String(),
+		TaskQueue:                workflow.FeedPollingTaskQueue,
+		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 	}
 	if _, err := h.temporalClient.ExecuteWorkflow(ctx, workflowOptions, workflow.ProcessFeedWorkflow, feedID); err != nil {
 		return nil, fmt.Errorf("failed to start feed refresh workflow: %w", err)

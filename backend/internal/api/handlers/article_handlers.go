@@ -465,12 +465,15 @@ func (h *ArticleHandlers) RetryArticle(ctx context.Context, input *RetryArticleR
 
 	// Use the canonical summarize-article-<uuid> workflow ID so the monitoring
 	// UI can still correlate retries with the article via parseWorkflowID.
-	// WorkflowIDReusePolicy allows a new execution once the previous one
-	// closed; we've already rejected in-flight retries above.
+	// ReusePolicy=ALLOW_DUPLICATE permits a new execution after the previous
+	// closed. ConflictPolicy=USE_EXISTING means a retry that raced an already-
+	// running execution quietly returns that execution instead of erroring —
+	// the in-flight check above prevents user-visible duplicates anyway.
 	workflowOptions := client.StartWorkflowOptions{
-		ID:                    "summarize-article-" + articleID.String(),
-		TaskQueue:             workflow.FeedPollingTaskQueue,
-		WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		ID:                       "summarize-article-" + articleID.String(),
+		TaskQueue:                workflow.FeedPollingTaskQueue,
+		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 	}
 
 	if _, err = h.temporalClient.ExecuteWorkflow(ctx, workflowOptions, workflow.SummarizeArticleWorkflow, articleID); err != nil {
