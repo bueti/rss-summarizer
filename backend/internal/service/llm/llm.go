@@ -13,6 +13,20 @@ import (
 	"github.com/bbu/rss-summarizer/backend/internal/service/topicnorm"
 )
 
+// maxErrorBodyBytes bounds how much of an LLM error body we propagate up into
+// error messages and logs. Providers occasionally echo request headers back
+// on failure, so we cap aggressively to avoid leaking the API key and to
+// keep error strings readable.
+const maxErrorBodyBytes = 512
+
+func readErrorBody(r io.Reader) string {
+	body, _ := io.ReadAll(io.LimitReader(r, maxErrorBodyBytes+1))
+	if len(body) > maxErrorBodyBytes {
+		return string(body[:maxErrorBodyBytes]) + "...(truncated)"
+	}
+	return string(body)
+}
+
 type Service interface {
 	SummarizeArticle(ctx context.Context, title, content string) (*ArticleSummary, error)
 	SummarizeArticleWithKey(ctx context.Context, title, content, apiKey string) (*ArticleSummary, error)
@@ -140,8 +154,7 @@ func (s *service) summarizeWithKey(ctx context.Context, title, content, apiKey s
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("LLM API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("LLM API returned status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	var anthropicResp anthropicResponse
@@ -267,8 +280,7 @@ func (s *service) SummarizeArticleWithConfig(ctx context.Context, title, content
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("LLM API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("LLM API returned status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	var responseText string

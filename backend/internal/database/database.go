@@ -34,7 +34,3 @@ func New(dbURL string) (*DB, error) {
 
 	return &DB{db}, nil
 }
-
-func (db *DB) Close() error {
-	return db.DB.Close()
-}
