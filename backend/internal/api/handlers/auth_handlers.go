@@ -123,10 +123,13 @@ func (h *AuthHandlers) Register(api huma.API) {
 const oauthStateCookieTTL = 10 * time.Minute
 
 func (h *AuthHandlers) stateCookie(value string, clear bool) http.Cookie {
+	// Path "/" so the cookie is sent regardless of any reverse-proxy prefix
+	// (e.g. when the API is mounted at /api/). The cookie is HttpOnly,
+	// Secure, SameSite=Lax, and lives for oauthStateCookieTTL.
 	c := http.Cookie{
 		Name:     oauthStateCookieName,
 		Value:    value,
-		Path:     "/auth/google",
+		Path:     "/",
 		HttpOnly: true,
 		Secure:   h.cfg.Server.Env != "development",
 		SameSite: http.SameSiteLaxMode,
