@@ -41,12 +41,12 @@ func (r *llmConfigRepository) Get(ctx context.Context) (*llmconfig.LLMConfig, er
 	}
 
 	// Decrypt API key if present
-	if config.APIKey != "" {
-		decrypted, err := r.crypto.Decrypt(config.APIKey)
+	if config.APIKey.Valid && config.APIKey.String != "" {
+		decrypted, err := r.crypto.Decrypt(config.APIKey.String)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt API key: %w", err)
 		}
-		config.APIKey = decrypted
+		config.APIKey = sql.NullString{String: decrypted, Valid: true}
 	}
 
 	return &config, nil

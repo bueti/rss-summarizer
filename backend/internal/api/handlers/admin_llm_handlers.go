@@ -76,7 +76,7 @@ func (h *AdminLLMHandlers) GetConfig(ctx context.Context, _ *struct{}) (*GetLLMC
 		Provider:  config.Provider,
 		Model:     config.Model,
 		APIURL:    config.APIURL,
-		HasAPIKey: config.APIKey != "",
+		HasAPIKey: config.APIKey.Valid && config.APIKey.String != "",
 		CreatedAt: config.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt: config.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
@@ -114,7 +114,7 @@ func (h *AdminLLMHandlers) UpdateConfig(ctx context.Context, input *UpdateLLMCon
 		Provider:  config.Provider,
 		Model:     config.Model,
 		APIURL:    config.APIURL,
-		HasAPIKey: config.APIKey != "",
+		HasAPIKey: config.APIKey.Valid && config.APIKey.String != "",
 		CreatedAt: config.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt: config.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
