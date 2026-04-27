@@ -148,7 +148,7 @@ func main() {
 		userArticleRepo,
 		rssService,
 		llmService,
-		llmProvider,
+		llmConfigRepo,
 	)
 	emailActivities := workflow.NewEmailActivities(
 		emailSourceRepo,

@@ -31,6 +31,7 @@ func readErrorBody(r io.Reader) string {
 const (
 	defaultOpenAIURL   = "https://api.openai.com/v1/chat/completions"
 	defaultPoolsideURL = "https://inference.poolside.ai/v1/chat/completions"
+	defaultPoolsideModel = "poolside/laguna-m.1"
 )
 
 type Service interface {
@@ -200,14 +201,19 @@ func (s *service) SummarizeArticleWithConfig(ctx context.Context, title, content
 	if apiKey == "" {
 		apiKey = s.apiKey
 	}
+	providerLower := strings.ToLower(provider)
 	if model == "" {
-		model = s.model
+		// Use provider-specific default model
+		if providerLower == "poolside" {
+			model = defaultPoolsideModel
+		} else {
+			model = s.model
+		}
 	}
 
 	prompt := buildSummarizationPrompt(title, content)
 
 	// Determine if using Anthropic or OpenAI format
-	providerLower := strings.ToLower(provider)
 	isAnthropic := providerLower == "anthropic"
 
 	var jsonData []byte

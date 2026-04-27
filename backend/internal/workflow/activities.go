@@ -24,7 +24,7 @@ type Activities struct {
 	userArticleRepo  repository.UserArticleRepository
 	rssService      rss.Service
 	llmService      llm.Service
-	provider        string
+	llmConfigRepo   repository.LLMConfigRepository
 }
 
 func NewActivities(
@@ -36,7 +36,7 @@ func NewActivities(
 	userArticleRepo repository.UserArticleRepository,
 	rssService rss.Service,
 	llmService llm.Service,
-	provider string,
+	llmConfigRepo repository.LLMConfigRepository,
 ) *Activities {
 	return &Activities{
 		feedRepo:        feedRepo,
@@ -47,7 +47,7 @@ func NewActivities(
 		userArticleRepo:  userArticleRepo,
 		rssService:      rssService,
 		llmService:      llmService,
-		provider:        provider,
+		llmConfigRepo:   llmConfigRepo,
 	}
 }
 
@@ -214,9 +214,25 @@ func (a *Activities) SummarizeArticleActivity(ctx context.Context, input Summari
 		return fmt.Errorf("no content to summarize")
 	}
 
-	// CHANGE: Always use system LLM config (no per-user preferences)
+	// Fetch fresh LLM config from database
+	llmConfig, err := a.llmConfigRepo.Get(ctx)
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to get LLM config: %v", err)
+		a.articleRepo.UpdateProcessingStatus(ctx, art.ID, article.ProcessingFailed, &errMsg)
+		return fmt.Errorf("failed to get LLM config: %w", err)
+	}
+
+	// Extract config values
+	provider := llmConfig.Provider
+	var apiURL, model, apiKey string
+	apiURL = llmConfig.APIURL
+	model = llmConfig.Model
+	if llmConfig.APIKey.Valid {
+		apiKey = llmConfig.APIKey.String
+	}
+
 	// Use SummarizeArticleWithConfig to support different provider formats (Anthropic vs OpenAI)
-	summary, err := a.llmService.SummarizeArticleWithConfig(ctx, art.Title, content, a.provider, "", "", "")
+	summary, err := a.llmService.SummarizeArticleWithConfig(ctx, art.Title, content, provider, apiURL, apiKey, model)
 	if err != nil {
 		errMsg := fmt.Sprintf("failed to summarize article: %v", err)
 		a.articleRepo.UpdateProcessingStatus(ctx, art.ID, article.ProcessingFailed, &errMsg)
