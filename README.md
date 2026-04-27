@@ -1,10 +1,10 @@
 # RSS Summarizer
 
-AI-powered RSS feed aggregator that summarizes articles using Claude, rates them by importance, and helps you stay informed without the noise.
+AI-powered RSS feed aggregator that summarizes articles using Poolside Laguna models (recommended) or Claude, rates them by importance, and helps you stay informed without the noise.
 
 ## Features
 
-- **AI Summarization**: Auto-summarize articles with Anthropic Claude
+- **AI Summarization**: Auto-summarize articles with Poolside Laguna models (recommended) or Anthropic Claude
 - **Importance Scoring**: Articles rated 1-5 based on your interests
 - **Smart Organization**: Save for later, archive, mark as read
 - **Topic Detection**: Auto-categorize with normalized broad topics
@@ -17,7 +17,8 @@ AI-powered RSS feed aggregator that summarizes articles using Claude, rates them
 
 - Docker & Docker Compose
 - Go 1.26+ and Node.js 20+ (for local development)
-- Anthropic API key ([get one here](https://console.anthropic.com/))
+- Poolside API key ([get one here](https://platform.poolside.ai/)) - Recommended for best performance
+- (Alternative) Anthropic API key ([get one here](https://console.anthropic.com/))
 
 ### Setup
 
@@ -28,8 +29,15 @@ cd rss-summarizer
 
 # 2. Configure backend
 cp backend/.env.example backend/.env
-# Edit backend/.env and add your Anthropic API key:
+# Edit backend/.env and add your API key:
+# Option A (Recommended): Poolside API key (better performance)
+# LLM_API_KEY=ps-your-key-here
+# LLM_MODEL=poolside/laguna-m.1
+# Provider: Set to "poolside" in admin UI
+
+# Option B: Anthropic API key
 # LLM_API_KEY=sk-ant-api03-your-key-here
+# LLM_MODEL=claude-3-5-sonnet-20241022
 
 # 3. Start everything
 make start
@@ -69,7 +77,7 @@ make help           # Show all commands
 
 **Backend:** Go, PostgreSQL, Temporal, Huma v2 (OpenAPI auto-generation)
 **Frontend:** SvelteKit, Svelte 5, TypeScript, Tailwind CSS
-**AI:** Anthropic Claude API
+**AI:** Poolside Laguna models (recommended) or Anthropic Claude API
 
 ## Project Structure
 
@@ -123,8 +131,16 @@ rss-summarizer/
 **Backend** (`backend/.env`):
 ```bash
 DATABASE_URL=postgres://rss_user:rss_pass@localhost:5432/rss_summarizer?sslmode=disable
-LLM_API_KEY=sk-ant-api03-your-key-here  # Get from console.anthropic.com
-LLM_MODEL=claude-haiku-4-5                # Or claude-sonnet-4-5 for better quality
+
+# Option 1 (Recommended): Poolside API key
+# Get from https://platform.poolside.ai/
+LLM_API_KEY=ps-your-key-here
+LLM_MODEL=poolside/laguna-m.1
+
+# Option 2: Anthropic API key
+# Get from https://console.anthropic.com/
+# LLM_API_KEY=sk-ant-api03-your-key-here
+# LLM_MODEL=claude-3-5-sonnet-20241022
 ```
 
 **Frontend** (`frontend/.env` - optional):
@@ -135,6 +151,18 @@ VITE_API_URL=http://localhost:8080  # Defaults to localhost:8080
 ### Development Mode
 
 Set `DEV_MODE=true` in backend `.env` to bypass authentication (default user created automatically).
+
+### LLM Provider Selection
+
+After initial setup, configure your preferred LLM provider in the admin UI:
+
+1. Go to **Admin → LLM Configuration** in the web UI
+2. Select your provider:
+   - **Poolside (Laguna models)** - Recommended for best performance
+   - **Anthropic** - Claude models
+   - **OpenAI** - GPT models
+3. Enter the model name and API key
+4. For Poolside: Use `poolside/laguna-m.1` or `poolside/laguna-xs`
 
 ## Documentation
 
