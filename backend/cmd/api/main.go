@@ -107,8 +107,8 @@ func main() {
 		if llmConfig.APIURL != "" {
 			llmAPIURL = llmConfig.APIURL
 		}
-		if llmConfig.APIKey != "" {
-			llmAPIKey = llmConfig.APIKey
+		if llmConfig.APIKey.Valid && llmConfig.APIKey.String != "" {
+			llmAPIKey = llmConfig.APIKey.String
 		}
 		if llmConfig.Model != "" {
 			llmModel = llmConfig.Model

@@ -1,6 +1,7 @@
 package llmconfig
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -8,14 +9,14 @@ import (
 
 // LLMConfig represents the global LLM configuration for article summarization
 type LLMConfig struct {
-	ID             uuid.UUID `db:"id" json:"id"`
-	Provider       string    `db:"provider" json:"provider"`
-	Model          string    `db:"model" json:"model"`
-	APIURL         string    `db:"api_url" json:"api_url"`
-	APIKey         string    `db:"api_key" json:"-"` // Never serialize to JSON
-	SingletonGuard int       `db:"singleton_guard" json:"-"`
-	CreatedAt      time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
+	ID             uuid.UUID      `db:"id" json:"id"`
+	Provider       string         `db:"provider" json:"provider"`
+	Model          string         `db:"model" json:"model"`
+	APIURL         string         `db:"api_url" json:"api_url"`
+	APIKey         sql.NullString `db:"api_key" json:"-"` // Never serialize to JSON, nullable
+	SingletonGuard int            `db:"singleton_guard" json:"-"`
+	CreatedAt      time.Time      `db:"created_at" json:"created_at"`
+	UpdatedAt      time.Time      `db:"updated_at" json:"updated_at"`
 }
 
 // UpdateLLMConfigInput represents the input for updating LLM configuration
