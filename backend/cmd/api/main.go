@@ -101,6 +101,7 @@ func main() {
 	llmAPIURL := cfg.LLM.APIURL
 	llmAPIKey := cfg.LLM.APIKey
 	llmModel := cfg.LLM.Model
+	llmProvider := cfg.LLM.Provider // Use env provider as default
 
 	if llmConfig != nil {
 		if llmConfig.APIURL != "" {
@@ -112,8 +113,11 @@ func main() {
 		if llmConfig.Model != "" {
 			llmModel = llmConfig.Model
 		}
+		if llmConfig.Provider != "" {
+			llmProvider = llmConfig.Provider
+		}
 		log.Info().
-			Str("provider", llmConfig.Provider).
+			Str("provider", llmProvider).
 			Str("model", llmModel).
 			Msg("Using LLM config from database")
 	} else {
@@ -144,6 +148,7 @@ func main() {
 		userArticleRepo,
 		rssService,
 		llmService,
+		llmProvider,
 	)
 	emailActivities := workflow.NewEmailActivities(
 		emailSourceRepo,

@@ -34,9 +34,10 @@ type ServerConfig struct {
 }
 
 type LLMConfig struct {
-	APIURL string
-	APIKey string
-	Model  string
+	APIURL   string
+	APIKey   string
+	Model    string
+	Provider string
 }
 
 type TemporalConfig struct {
@@ -100,9 +101,10 @@ func Load() (*Config, error) {
 			AllowedOrigins: allowedOrigins,
 		},
 		LLM: LLMConfig{
-			APIURL: getEnv("LLM_API_URL", "https://api.openai.com/v1"),
-			APIKey: getEnv("LLM_API_KEY", ""),
-			Model:  getEnv("LLM_MODEL", "gpt-4o-mini"),
+			APIURL:   getEnv("LLM_API_URL", "https://api.openai.com/v1"),
+			APIKey:   getEnv("LLM_API_KEY", ""),
+			Model:    getEnv("LLM_MODEL", "gpt-4o-mini"),
+			Provider: getEnv("LLM_PROVIDER", "anthropic"),
 		},
 		Temporal: TemporalConfig{
 			Host:      getEnv("TEMPORAL_HOST", "localhost:7233"),

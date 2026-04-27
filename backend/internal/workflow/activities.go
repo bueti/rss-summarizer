@@ -24,6 +24,7 @@ type Activities struct {
 	userArticleRepo  repository.UserArticleRepository
 	rssService      rss.Service
 	llmService      llm.Service
+	provider        string
 }
 
 func NewActivities(
@@ -35,6 +36,7 @@ func NewActivities(
 	userArticleRepo repository.UserArticleRepository,
 	rssService rss.Service,
 	llmService llm.Service,
+	provider string,
 ) *Activities {
 	return &Activities{
 		feedRepo:        feedRepo,
@@ -45,6 +47,7 @@ func NewActivities(
 		userArticleRepo:  userArticleRepo,
 		rssService:      rssService,
 		llmService:      llmService,
+		provider:        provider,
 	}
 }
 
@@ -212,7 +215,8 @@ func (a *Activities) SummarizeArticleActivity(ctx context.Context, input Summari
 	}
 
 	// CHANGE: Always use system LLM config (no per-user preferences)
-	summary, err := a.llmService.SummarizeArticle(ctx, art.Title, content)
+	// Use SummarizeArticleWithConfig to support different provider formats (Anthropic vs OpenAI)
+	summary, err := a.llmService.SummarizeArticleWithConfig(ctx, art.Title, content, a.provider, "", "", "")
 	if err != nil {
 		errMsg := fmt.Sprintf("failed to summarize article: %v", err)
 		a.articleRepo.UpdateProcessingStatus(ctx, art.ID, article.ProcessingFailed, &errMsg)
