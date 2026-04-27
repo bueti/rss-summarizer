@@ -266,20 +266,6 @@ export interface FeedResponseBody {
   url: string;
 }
 
-export interface GmailCallbackResponseBody {
-  /** A URL to the JSON Schema for this object. */
-  readonly $schema?: string;
-  message: string;
-  success: boolean;
-}
-
-export interface GoogleCallbackResponseBody {
-  /** A URL to the JSON Schema for this object. */
-  readonly $schema?: string;
-  /** URL to redirect user to after authentication */
-  redirect_url: string;
-}
-
 export interface GoogleLoginResponseBody {
   /** A URL to the JSON Schema for this object. */
   readonly $schema?: string;
@@ -481,6 +467,7 @@ export type UpdateLLMConfigRequestBodyProvider = typeof UpdateLLMConfigRequestBo
 export const UpdateLLMConfigRequestBodyProvider = {
   openai: 'openai',
   anthropic: 'anthropic',
+  poolside: 'poolside',
 } as const;
 
 export interface UpdateLLMConfigRequestBody {
@@ -662,17 +649,17 @@ min_importance?: number;
  */
 topic?: string;
 /**
- * Filter by read status (true/false)
+ * Filter by read status
  */
-is_read?: string;
+is_read?: ListArticlesIsRead;
 /**
- * Filter by saved status (true/false)
+ * Filter by saved status
  */
-is_saved?: string;
+is_saved?: ListArticlesIsSaved;
 /**
- * Filter by archived status (true/false)
+ * Filter by archived status
  */
-is_archived?: string;
+is_archived?: ListArticlesIsArchived;
 /**
  * Filter by processing status (pending/processing/completed/failed)
  */
@@ -691,6 +678,33 @@ limit?: number;
  */
 offset?: number;
 };
+
+export type ListArticlesIsRead = typeof ListArticlesIsRead[keyof typeof ListArticlesIsRead];
+
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListArticlesIsRead = {
+  true: 'true',
+  false: 'false',
+} as const;
+
+export type ListArticlesIsSaved = typeof ListArticlesIsSaved[keyof typeof ListArticlesIsSaved];
+
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListArticlesIsSaved = {
+  true: 'true',
+  false: 'false',
+} as const;
+
+export type ListArticlesIsArchived = typeof ListArticlesIsArchived[keyof typeof ListArticlesIsArchived];
+
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListArticlesIsArchived = {
+  true: 'true',
+  false: 'false',
+} as const;
 
 export type ListArticlesSortBy = typeof ListArticlesSortBy[keyof typeof ListArticlesSortBy];
 
@@ -734,27 +748,25 @@ export type HTTPStatusCode5xx = 500 | 501 | 502 | 503 | 504 | 505 | 507 | 511;
 export type HTTPStatusCodes = HTTPStatusCode1xx | HTTPStatusCode2xx | HTTPStatusCode3xx | HTTPStatusCode4xx | HTTPStatusCode5xx;
 
 /**
- * Processes the OAuth callback, creates a session, and returns redirect URL
+ * Processes the OAuth callback, creates a session, and redirects to the frontend
  * @summary Handle Google OAuth callback
  */
-export type googleCallbackResponse200 = {
-  data: GoogleCallbackResponseBody
-  status: 200
+export type googleCallbackResponse302 = {
+  data: void
+  status: 302
 }
 
 export type googleCallbackResponseDefault = {
   data: ErrorModel
-  status: Exclude<HTTPStatusCodes, 200>
+  status: Exclude<HTTPStatusCodes, 302>
 }
     
-export type googleCallbackResponseSuccess = (googleCallbackResponse200) & {
-  headers: Headers;
-};
-export type googleCallbackResponseError = (googleCallbackResponseDefault) & {
+;
+export type googleCallbackResponseError = (googleCallbackResponse302 | googleCallbackResponseDefault) & {
   headers: Headers;
 };
 
-export type googleCallbackResponse = (googleCallbackResponseSuccess | googleCallbackResponseError)
+export type googleCallbackResponse = (googleCallbackResponseError)
 
 export const getGoogleCallbackUrl = (params: GoogleCallbackParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -1462,8 +1474,8 @@ export const markArticleRead = async (id: string,
 
 
 /**
- * Trigger processing for pending articles or retry failed articles
- * @summary Process or retry article
+ * Trigger processing for pending articles, retry failed articles, or reprocess completed articles (e.g., to regenerate summaries with updated prompts)
+ * @summary Process or reprocess article
  */
 export type processArticleResponse204 = {
   data: void
@@ -1555,24 +1567,22 @@ export const setArticleSaved = async (id: string,
  * Processes the Gmail OAuth callback and stores access tokens
  * @summary Handle Gmail OAuth callback
  */
-export type gmailCallbackResponse200 = {
-  data: GmailCallbackResponseBody
-  status: 200
+export type gmailCallbackResponse302 = {
+  data: void
+  status: 302
 }
 
 export type gmailCallbackResponseDefault = {
   data: ErrorModel
-  status: Exclude<HTTPStatusCodes, 200>
+  status: Exclude<HTTPStatusCodes, 302>
 }
     
-export type gmailCallbackResponseSuccess = (gmailCallbackResponse200) & {
-  headers: Headers;
-};
-export type gmailCallbackResponseError = (gmailCallbackResponseDefault) & {
+;
+export type gmailCallbackResponseError = (gmailCallbackResponse302 | gmailCallbackResponseDefault) & {
   headers: Headers;
 };
 
-export type gmailCallbackResponse = (gmailCallbackResponseSuccess | gmailCallbackResponseError)
+export type gmailCallbackResponse = (gmailCallbackResponseError)
 
 export const getGmailCallbackUrl = (params: GmailCallbackParams,) => {
   const normalizedParams = new URLSearchParams();
