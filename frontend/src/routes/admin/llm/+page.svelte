@@ -120,6 +120,7 @@
 				>
 					<option value="openai">OpenAI</option>
 					<option value="anthropic">Anthropic</option>
+					<option value="poolside">Poolside (Laguna models)</option>
 				</select>
 				<p class="mt-1 text-sm text-gray-500">LLM provider to use</p>
 			</div>
@@ -131,7 +132,7 @@
 					id="model"
 					type="text"
 					bind:value={formData.model}
-					placeholder="e.g., claude-3-5-sonnet-20241022 or gpt-4o-mini"
+					placeholder="e.g., claude-3-5-sonnet-20241022, gpt-4o-mini, or poolside/laguna-m.1"
 					class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 				/>
 				<p class="mt-1 text-sm text-gray-500">Model name/identifier</p>
@@ -144,7 +145,7 @@
 					id="api_url"
 					type="url"
 					bind:value={formData.api_url}
-					placeholder="e.g., https://api.anthropic.com/v1"
+					placeholder="e.g., https://api.anthropic.com/v1 or https://inference.poolside.ai/v1"
 					class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 				/>
 				<p class="mt-1 text-sm text-gray-500">API endpoint URL</p>

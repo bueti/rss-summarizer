@@ -33,7 +33,7 @@ type GetLLMConfigResponse struct {
 
 type UpdateLLMConfigRequest struct {
 	Body struct {
-		Provider string  `json:"provider,omitempty" enum:"openai,anthropic" doc:"LLM provider to use"`
+		Provider string  `json:"provider,omitempty" enum:"openai,anthropic,poolside" doc:"LLM provider to use"`
 		Model    string  `json:"model,omitempty" minLength:"1" maxLength:"100" doc:"LLM model name"`
 		APIURL   string  `json:"api_url,omitempty" maxLength:"500" doc:"API URL for the LLM provider"`
 		APIKey   *string `json:"api_key,omitempty" doc:"LLM API key (optional, only provide to update)"`

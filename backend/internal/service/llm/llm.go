@@ -27,6 +27,12 @@ func readErrorBody(r io.Reader) string {
 	return string(body)
 }
 
+// Default API URLs for providers
+const (
+	defaultOpenAIURL   = "https://api.openai.com/v1/chat/completions"
+	defaultPoolsideURL = "https://inference.poolside.ai/v1/chat/completions"
+)
+
 type Service interface {
 	SummarizeArticle(ctx context.Context, title, content string) (*ArticleSummary, error)
 	SummarizeArticleWithKey(ctx context.Context, title, content, apiKey string) (*ArticleSummary, error)
@@ -201,7 +207,8 @@ func (s *service) SummarizeArticleWithConfig(ctx context.Context, title, content
 	prompt := buildSummarizationPrompt(title, content)
 
 	// Determine if using Anthropic or OpenAI format
-	isAnthropic := strings.ToLower(provider) == "anthropic"
+	providerLower := strings.ToLower(provider)
+	isAnthropic := providerLower == "anthropic"
 
 	var jsonData []byte
 	var err error
@@ -231,7 +238,7 @@ func (s *service) SummarizeArticleWithConfig(ctx context.Context, title, content
 			effectiveURL = s.apiURL
 		}
 	} else {
-		// Use OpenAI-compatible format
+		// Use OpenAI-compatible format (includes poolside, openai, and custom endpoints)
 		reqBody := openAIRequest{
 			Model:       model,
 			MaxTokens:   2048,
@@ -251,11 +258,13 @@ func (s *service) SummarizeArticleWithConfig(ctx context.Context, title, content
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request: %w", err)
 		}
-		// Use custom URL or default to OpenAI
+		// Use custom URL or default to OpenAI (poolside uses its own default)
 		if apiURL != "" {
 			effectiveURL = apiURL
+		} else if providerLower == "poolside" {
+			effectiveURL = defaultPoolsideURL
 		} else {
-			effectiveURL = "https://api.openai.com/v1/chat/completions"
+			effectiveURL = defaultOpenAIURL
 		}
 	}
 
