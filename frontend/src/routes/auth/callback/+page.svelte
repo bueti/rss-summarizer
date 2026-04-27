@@ -25,9 +25,11 @@
 			// Re-initialize auth store to get user info
 			await authStore.initialize();
 
-			// Redirect to dashboard
+			// Redirect to dashboard (302 redirect or fallback)
 			if (response.status === 200) {
-				goto(response.data.redirect_url || '/');
+				goto('/');
+			} else {
+				goto('/');
 			}
 		} catch (err: any) {
 			error = err.message || 'Authentication failed';
